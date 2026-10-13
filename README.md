@@ -2,6 +2,13 @@
 
 A TypeScript implementation of Andrej Karpathy's **LLM Wiki** pattern — the idea file he published as a gist in April 2026 ([karpathy/442a6bf555914893e9891c11519de94f](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)). Instead of RAG that re-derives answers from raw documents on every question, an LLM **incrementally compiles** your sources into a persistent, interlinked markdown wiki that keeps getting richer. This tool gives you the three layers, the two special files, the operations, and the "optional CLI tools" the gist describes, aimed at indexing and searching personal documentation.
 
+## User guide (slides)
+
+A 24-slide walkthrough of setup, the daily loop, PDF/DOCX handling and agent integration, in the BikS2013 theme:
+
+- **[View the deck](https://biks2013.github.io/llm-wiki/presentations/llm-wiki-user-guide.html)** (HTML, arrow keys to navigate; double-click text to edit, right-click for the menu)
+- [PDF](https://biks2013.github.io/llm-wiki/presentations/llm-wiki-user-guide.pdf) · [PowerPoint](https://github.com/BikS2013/llm-wiki/raw/main/docs/presentations/llm-wiki-user-guide.pptx)
+
 ## What it implements from the spec
 
 | Spec element | Implementation |
