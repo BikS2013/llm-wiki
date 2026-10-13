@@ -2,3 +2,8 @@ node_modules/
 dist/
 .env
 *.log
+
+# presentation verification artifacts (regenerable with the nbg-design scripts)
+docs/presentations/*-screenshots/
+docs/presentations/*-pptx-check/
+docs/presentations/assets/*.datauri.txt
