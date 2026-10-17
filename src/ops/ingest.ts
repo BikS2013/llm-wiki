@@ -17,7 +17,8 @@ import { stageSource } from './stage.js';
 import { isParsableDocument } from './extract.js';
 import { markdownPathFor, parseDocument, type ParseOptions } from './parse.js';
 import type { DocumentParser } from '../llm/types.js';
-import { parseFrontmatter, withFrontmatter } from '../wiki/markdown.js';
+import { parseFrontmatter } from '../wiki/markdown.js';
+import { readPageParts, writePageParts } from './pages.js';
 
 export interface IngestOptions {
   force: boolean;
@@ -110,7 +111,7 @@ export async function ingestSource(config: Config, paths: WikiPaths, llm: ChatCl
   ].join('\n\n');
 
   log(`asking ${llm.provider}/${llm.model} to compile ${sourceRel} (${related.pages.length} related page(s) in context)`);
-  const reply = await llm.chat({ system: ingestSystemPrompt(schema), user, maxTokens: opts.maxTokens });
+  const reply = await llm.chat({ system: ingestSystemPrompt(schema, paths.format.name), user, maxTokens: opts.maxTokens });
   const json = extractJson(reply, isPlanJson);
   const plan: IngestPlan = {
     title: json.title,
@@ -136,12 +137,14 @@ export async function ingestSource(config: Config, paths: WikiPaths, llm: ChatCl
   return { sourceRel, originalRel, skipped: false, plan, applied };
 }
 
-/** Guarantees the summary page's frontmatter records the original document, whatever the model wrote. */
+/** Guarantees the summary page's metadata records the original document, whatever the model wrote. */
 function stampOriginal(paths: WikiPaths, pageId: string, originalRel: string): void {
-  const abs = paths.pageAbs(pageId);
-  const { frontmatter, body } = parseFrontmatter(fs.readFileSync(abs, 'utf8'));
-  const mention = body.includes(originalRel) ? '' : `\n\n**Original document:** [[${originalRel}]] (kept unmodified in raw/).\n`;
-  fs.writeFileSync(abs, withFrontmatter({ ...frontmatter, original: originalRel }, `${body.trimEnd()}${mention}\n`));
+  const { frontmatter, body } = readPageParts(paths, pageId);
+  const fmt = paths.format;
+  const linked = body.includes(originalRel) || body.includes(originalRel.split('/').map(encodeURIComponent).join('/'));
+  const mentionMd = `**Original document:** [[${originalRel}]] (kept unmodified in raw/).`;
+  const mention = linked ? '' : fmt.name === 'html' ? `\n${fmt.prepare(mentionMd, pageId, (t) => t)}\n` : `\n\n${mentionMd}\n`;
+  writePageParts(paths, pageId, { ...frontmatter, original: originalRel }, `${body.trimEnd()}${mention}\n`);
 }
 
 /** Raw sources that are new or changed since their last ingest, plus PDF/DOCX originals not yet converted. */

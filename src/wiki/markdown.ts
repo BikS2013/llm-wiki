@@ -96,8 +96,8 @@ export interface WikiLink {
   target: string;
   alias?: string;
   heading?: string;
-  /** `wiki` for `[[...]]`, `md` for `[text](x.md)`. */
-  kind: 'wiki' | 'md';
+  /** `wiki` for `[[...]]`, `md` for `[text](x.md)`, `html` for `<a href="x.html">` (target is then a page id). */
+  kind: 'wiki' | 'md' | 'html';
 }
 
 /** Extracts `[[target|alias]]`, `[[target#heading]]` and `[text](relative.md)` links. */

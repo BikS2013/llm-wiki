@@ -1,6 +1,6 @@
 # llm-wiki
 
-A TypeScript implementation of Andrej Karpathy's **LLM Wiki** pattern — the idea file he published as a gist in April 2026 ([karpathy/442a6bf555914893e9891c11519de94f](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)). Instead of RAG that re-derives answers from raw documents on every question, an LLM **incrementally compiles** your sources into a persistent, interlinked markdown wiki that keeps getting richer. This tool gives you the three layers, the two special files, the operations, and the "optional CLI tools" the gist describes, aimed at indexing and searching personal documentation.
+A TypeScript implementation of Andrej Karpathy's **LLM Wiki** pattern — the idea file he published as a gist in April 2026 ([karpathy/442a6bf555914893e9891c11519de94f](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)). Instead of RAG that re-derives answers from raw documents on every question, an LLM **incrementally compiles** your sources into a persistent, interlinked wiki — markdown pages, or standalone HTML pages you read in a browser — that keeps getting richer. This tool gives you the three layers, the two special files, the operations, and the "optional CLI tools" the gist describes, aimed at indexing and searching personal documentation.
 
 ## User guide (slides)
 
@@ -28,11 +28,34 @@ A 24-slide walkthrough of setup, the daily loop, PDF/DOCX handling and agent int
 
 ```bash
 pnpm install
-pnpm build
-npm link            # optional: puts `llm-wiki` on your PATH
+pnpm link:global    # builds, then installs the `llm-wiki` command on your PATH
+llm-wiki --version
 ```
 
-Requires Node 22+.
+Requires Node 22+ and pnpm's global bin folder on your PATH (`pnpm setup` adds it). The command is a link to this checkout, so after pulling changes run `pnpm build` and the global command picks them up. Remove it with `pnpm unlink:global`.
+
+## Claude skill
+
+`skills/llm-wiki/SKILL.md` is a ready-made Claude Code skill that lets Claude operate the tool: it picks the right wiki, always passes `--wiki` and `--json`, flags LLM costs, and follows the guardrails (never touching `raw/`, the index or the log). Install it once:
+
+```bash
+pnpm skill:install     # symlinks ~/.claude/skills/llm-wiki to this repo; pnpm skill:uninstall removes it
+```
+
+Then ask Claude things like "add this PDF to my work wiki" or "what do my wikis say about Kubernetes?". Development notes: `llm-wiki-docs/`.
+
+## Full guide (for people and AI agents)
+
+`llm-wiki guide` prints a complete manual: concepts, wiki layout, how a wiki is chosen, every command and option (generated from the CLI itself), task recipes, configuration, the JSON shape of every `--json` output, exit codes, the MCP tools, rules for agents, and instructions for building a Claude skill on top of the tool.
+
+```bash
+llm-wiki guide              # everything, as markdown
+llm-wiki guide --topics     # overview, layout, selection, commands, workflows, config, output, errors, mcp, agent-rules, skill
+llm-wiki guide workflows    # one topic
+llm-wiki guide --json       # machine-readable: topics plus the full command/option tree
+```
+
+To have Claude write a skill for the tool, ask it to run `llm-wiki guide` (or `llm-wiki guide skill` first) and build the skill from the output.
 
 ## Configure
 
@@ -40,7 +63,6 @@ Settings resolve in four tiers, lowest to highest priority: shell env → `~/.to
 
 ```bash
 # ~/.tool-agents/llm-wiki/.env
-LLM_WIKI_ROOT=/Users/you/notes-wiki
 LLM_WIKI_PROVIDER=anthropic          # openai | anthropic | gemini | azure-openai | azure-anthropic | ollama | litellm | mlx
 LLM_WIKI_MODEL=claude-opus-5
 ANTHROPIC_API_KEY=...
@@ -60,8 +82,7 @@ Provider credentials use the vendor's canonical names: `OPENAI_API_KEY`/`OPENAI_
 ## Use
 
 ```bash
-llm-wiki init ~/notes-wiki                 # creates raw/, wiki/, CLAUDE.md, index.md, log.md
-export LLM_WIKI_ROOT=~/notes-wiki
+llm-wiki init ~/notes-wiki --format markdown --name notes   # creates raw/, wiki/, CLAUDE.md, index.md, log.md and registers it
 
 cp ~/Downloads/some-article.md ~/notes-wiki/raw/
 llm-wiki ingest raw/some-article.md        # or just `llm-wiki ingest` for every pending source
@@ -81,15 +102,37 @@ llm-wiki log --last 5
 
 Open the wiki root in Obsidian to browse it (graph view shows hubs and orphans), exactly as the gist suggests.
 
+### Several wikis
+
+Every wiki you `init` is registered by name in `~/.tool-agents/llm-wiki/wikis.json`. The first one becomes the current wiki; you choose the target of each command with `--wiki`, or change the default with `wikis use`.
+
+```bash
+llm-wiki init ~/work-wiki --format html --name work --description "Work documentation"
+llm-wiki wikis add old ~/old-wiki          # register a wiki created earlier
+llm-wiki wikis                             # list: name, root, pages, pending sources, last activity
+llm-wiki wikis use work                    # default for commands that name no wiki
+llm-wiki --wiki notes ingest raw/recipe.md # update one wiki explicitly
+llm-wiki --wiki work query "Who owns the billing service?"
+llm-wiki --pick query "..."                # choose from a list on the terminal
+llm-wiki query "..." --wikis work,notes     # answer from several wikis; citations read [[work:page]]
+llm-wiki search "kubernetes" --all-wikis   # or --wikis work,notes; hits are labelled by wiki
+llm-wiki wikis current                     # which wiki will be used, and why
+llm-wiki wikis remove old                  # unregister; files stay on disk
+```
+
+Selection order: `--wiki`/`LLM_WIKI_NAME` or `--root`/`LLM_WIKI_ROOT` first, then the current selection, then an interactive prompt on a terminal. Without any of these the command fails and lists the registered wikis.
+
 ### With Claude Code / Codex
 
 The wiki root's `CLAUDE.md` is the schema: open the root in Claude Code and it becomes the wiki maintainer. Give it the search tool natively:
 
 ```bash
-claude mcp add llm-wiki -- node /path/to/wiki-v2/dist/cli.js --root ~/notes-wiki mcp
+claude mcp add llm-wiki -- llm-wiki mcp
 ```
 
-Tools exposed: `wiki_search`, `wiki_read_page`, `wiki_list_pages`, `wiki_write_page`, `wiki_append_log`, `wiki_recent_log`, `wiki_lint`, `wiki_reindex`.
+One server serves every registered wiki. Each tool takes an optional `wiki` argument, `wiki_list_wikis` lets the agent pick the right one, and `wiki_search` accepts `wikis: ["*"]` to search them all. Calls without a `wiki` use the current selection (or the wiki given by `--wiki`/`--root` when the server was added).
+
+Tools exposed: `wiki_list_wikis`, `wiki_search`, `wiki_read_page`, `wiki_list_pages`, `wiki_write_page`, `wiki_append_log`, `wiki_recent_log`, `wiki_lint`, `wiki_reindex`.
 
 ## PDF and DOCX originals
 
@@ -111,7 +154,16 @@ parsed_at: 2026-09-12
 
 The wiki's `sources/` page also carries `original: raw/report.pdf` and links it. Conversions are cached by the original's hash in `.llm-wiki/parsed.json`; `--reparse` (or `parse --force`) redoes them.
 
-## Page format
+## Page formats: markdown or HTML
+
+Each wiki picks its page format once, at `init` (`--format markdown` or `--format html`, or `LLM_WIKI_FORMAT`); there is no default (`.llm-wiki/wiki.json` records it). A markdown wiki can be converted later with `llm-wiki --wiki <name> convert --to html` — no LLM involved, links rewritten, the markdown kept in `.llm-wiki/backup/`, and a customised `CLAUDE.md` merged so your own sections survive.
+
+- **markdown** — `wiki/<id>.md` with YAML frontmatter and `[[wikilinks]]`. Best for Obsidian, editors and agents that read files.
+- **html** — `wiki/<id>.html`, standalone pages you open in a browser (`open wiki/index.html`): relative links between pages and to `raw/` originals, a shared `wiki/wiki.css`, Index/Log navigation, metadata in a JSON block in `<head>`, and a Content-Security-Policy that disables scripts.
+
+Ingest, query, search, lint and MCP work the same in both. The LLM writes every page as frontmatter + body; in an HTML wiki the body is an HTML fragment (or markdown), and the tool turns `[[wikilinks]]` into relative links, strips active content, and builds the page. `llm-wiki guide layout` has the details.
+
+A markdown page:
 
 ```markdown
 ---

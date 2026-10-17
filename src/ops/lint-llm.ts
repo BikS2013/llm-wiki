@@ -5,10 +5,11 @@ import { SearchStore } from '../search/store.js';
 import { writeIndex } from '../wiki/index.js';
 import type { WikiPaths } from '../wiki/layout.js';
 import { appendLog } from '../wiki/log.js';
-import { todayIso, withFrontmatter } from '../wiki/markdown.js';
+import { todayIso } from '../wiki/markdown.js';
 import { lintStructure, formatLintReport, type LintReport } from '../wiki/lint.js';
 import { allPagesWithinBudget, readIndexMd, renderPagesForPrompt } from './context.js';
-import { freePageId, writePageFile } from './write.js';
+import { freePageId } from './write.js';
+import { writePageParts } from './pages.js';
 import { lintSystemPrompt } from './prompts.js';
 
 export interface SemanticLint {
@@ -67,7 +68,7 @@ export function renderSemanticLint(s: SemanticLint): string {
   return lines.length ? lines.join('\n').trimEnd() : '_The model found nothing to report._';
 }
 
-/** Writes `wiki/lint/<date>.md` with both structural and semantic findings, updates the index and log. */
+/** Writes `wiki/lint/<date>.md` (or `.html`) with both structural and semantic findings, updates the index and log. */
 export function fileLintReport(paths: WikiPaths, structural: LintReport, semantic: SemanticLint | undefined): string {
   const date = todayIso();
   const id = freePageId(paths, 'lint', date);
@@ -83,7 +84,7 @@ export function fileLintReport(paths: WikiPaths, structural: LintReport, semanti
     semantic ? renderSemanticLint(semantic) : '_Semantic lint not run (use `llm-wiki lint --llm`)._',
     '',
   ].join('\n');
-  writePageFile(paths, id, withFrontmatter({ title: `Lint report ${date}`, type: 'lint', summary: `${structural.findings.length} structural finding(s)${semantic ? `, ${semantic.contradictions.length} contradiction(s), ${semantic.missing_pages.length} missing page(s)` : ''}.`, created: date, updated: date }, body));
+  writePageParts(paths, id, { title: `Lint report ${date}`, type: 'lint', summary: `${structural.findings.length} structural finding(s)${semantic ? `, ${semantic.contradictions.length} contradiction(s), ${semantic.missing_pages.length} missing page(s)` : ''}.`, created: date, updated: date }, body);
   writeIndex(paths);
   new SearchStore(paths).reindex({ includeRaw: false });
   appendLog(paths, 'lint', `Lint report ${date}`, `Filed as [[${id}]].`);

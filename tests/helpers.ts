@@ -4,11 +4,12 @@ import path from 'node:path';
 import { initWiki } from '../src/ops/init.js';
 import { WikiPaths, writePage } from '../src/wiki/layout.js';
 import { withFrontmatter } from '../src/wiki/markdown.js';
+import type { WikiFormat } from '../src/wiki/format.js';
 import type { ChatClient, ChatRequest, EmbeddingClient } from '../src/llm/types.js';
 
-export function tempWiki(): WikiPaths {
+export function tempWiki(format: WikiFormat = 'markdown'): WikiPaths {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'llm-wiki-test-'));
-  initWiki(dir);
+  initWiki(dir, { format });
   return new WikiPaths(dir);
 }
 

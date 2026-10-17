@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { chunkSections, parseFrontmatter, splitSections } from '../wiki/markdown.js';
 import { listPages, listRawFiles, type WikiPaths } from '../wiki/layout.js';
+import { htmlFormat } from '../wiki/format.js';
 
 export type Layer = 'wiki' | 'raw';
 
@@ -104,7 +105,7 @@ export class SearchStore {
     };
 
     for (const page of listPages(this.paths)) {
-      consider(page.relPath, 'wiki', () => ({ title: page.title, body: page.body }), sha256(page.raw));
+      consider(page.relPath, 'wiki', () => ({ title: page.title, body: page.text }), sha256(page.raw));
     }
     if (opts.includeRaw) {
       for (const abs of listRawFiles(this.paths)) {
@@ -115,6 +116,11 @@ export class SearchStore {
           rel,
           'raw',
           () => {
+            if (/\.html?$/i.test(abs)) {
+              const { body } = htmlFormat.parse(raw);
+              const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(raw)?.[1]?.trim() || path.basename(abs, path.extname(abs));
+              return { title, body: htmlFormat.text(body) };
+            }
             const { frontmatter, body } = parseFrontmatter(raw);
             const title = typeof frontmatter.title === 'string' ? frontmatter.title : path.basename(abs, path.extname(abs));
             return { title, body };

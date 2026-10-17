@@ -1,6 +1,7 @@
 import path from 'node:path';
-import type { Config } from './env.js';
+import { tierRank, type Config } from './env.js';
 import { ConfigError } from '../errors.js';
+import type { WikiRegistry } from '../wiki/registry.js';
 
 export const PROVIDERS = [
   'openai',
@@ -22,10 +23,56 @@ export function parseProvider(raw: string, settingName: string): ProviderName {
   return v;
 }
 
-/** Absolute path of the wiki root (`LLM_WIKI_ROOT` or `--root`). */
-export function wikiRoot(config: Config): string {
-  const raw = config.require('LLM_WIKI_ROOT', 'It must point at a directory created with `llm-wiki init <dir>`.');
-  return path.resolve(raw);
+export interface ResolvedWiki {
+  root: string;
+  /** Registry name, when the wiki is registered. */
+  name?: string;
+  /** What selected it: an explicit path, an explicit name, or the registry's current selection. */
+  via: 'LLM_WIKI_ROOT' | 'LLM_WIKI_NAME' | 'current';
+}
+
+/**
+ * Decides which wiki a command operates on, without ever guessing:
+ * 1. `LLM_WIKI_ROOT` (`--root`) or `LLM_WIKI_NAME` (`--wiki`), whichever comes from the higher
+ *    configuration tier; both in the same tier is an error.
+ * 2. Otherwise the registry's current selection (`llm-wiki wikis use <name>`).
+ * Returns undefined when nothing selects a wiki.
+ */
+export function resolveWiki(config: Config, registry: WikiRegistry): ResolvedWiki | undefined {
+  const rootTier = config.source('LLM_WIKI_ROOT');
+  const nameTier = config.source('LLM_WIKI_NAME');
+  if (rootTier !== undefined && nameTier !== undefined && rootTier === nameTier) {
+    throw new ConfigError(`Both LLM_WIKI_ROOT and LLM_WIKI_NAME are set at the ${rootTier} tier; set only one (or pass --root / --wiki to choose).`);
+  }
+  const useName = nameTier !== undefined && (rootTier === undefined || tierRank(nameTier) > tierRank(rootTier));
+  if (useName) {
+    const e = registry.get(config.require('LLM_WIKI_NAME'));
+    return { root: e.root, name: e.name, via: 'LLM_WIKI_NAME' };
+  }
+  if (rootTier !== undefined) {
+    const root = path.resolve(config.require('LLM_WIKI_ROOT'));
+    const name = registry.nameForRoot(root);
+    return { root, ...(name ? { name } : {}), via: 'LLM_WIKI_ROOT' };
+  }
+  const current = registry.current;
+  if (current !== undefined) {
+    const e = registry.get(current);
+    return { root: e.root, name: e.name, via: 'current' };
+  }
+  return undefined;
+}
+
+/** Like resolveWiki but throws a ConfigError that lists the registered wikis. */
+export function requireWiki(config: Config, registry: WikiRegistry): ResolvedWiki {
+  const r = resolveWiki(config, registry);
+  if (r) return r;
+  const names = registry.list().map((w) => w.name);
+  throw new ConfigError(
+    'No wiki selected. ' +
+      (names.length
+        ? `Pass --wiki <name> (registered: ${names.join(', ')}), select one with \`llm-wiki wikis use <name>\`, or set LLM_WIKI_NAME / LLM_WIKI_ROOT.`
+        : 'No wikis are registered yet: create one with `llm-wiki init <dir> --name <name>`, or set LLM_WIKI_ROOT / pass --root.'),
+  );
 }
 
 export interface ChatSettings {

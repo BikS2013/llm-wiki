@@ -99,3 +99,21 @@ test('semantic lint parses the model JSON and files a report page', async () => 
   assert.match(page, /\*\*Charles Babbage\*\*/);
   assert.equal(readLog(paths).at(-1)?.kind, 'lint');
 });
+
+test('cross-wiki query: pages from several wikis, [[wiki:page]] citations, a log entry in each wiki', async () => {
+  const { queryWikis } = await import('../src/ops/query.js');
+  const { addPage } = await import('./helpers.js');
+  const work = tempWiki();
+  const home = tempWiki('html');
+  addPage(work, 'concepts/deploy-pipeline', 'Deploy pipeline', 'Releases go through the kubernetes deploy pipeline every Tuesday.');
+  const { applyPageChanges } = await import('../src/ops/pages.js');
+  applyPageChanges(home, [{ op: 'create', path: 'concepts/home-lab', content: '---\ntitle: Home lab\n---\n<h1>Home lab</h1><p>The home kubernetes cluster runs on three mini PCs.</p>' }]);
+  const llm = new FakeChat(['Work deploys weekly [[work:concepts/deploy-pipeline]]; home runs three nodes [[home:concepts/home-lab]].']);
+  const r = await queryWikis(config, [{ name: 'work', paths: work, description: 'Work docs' }, { name: 'home', paths: home }], llm, 'kubernetes cluster deploy', { limit: 10, maxPages: 5, contextChars: 20000, maxTokens: 500 });
+  assert.deepEqual(r.wikis, ['work', 'home']);
+  assert.deepEqual([...r.pagesUsed].sort(), ['home:wiki/concepts/home-lab.html', 'work:wiki/concepts/deploy-pipeline.md']);
+  assert.match(llm.requests[0]!.system, /\[\[<wiki>:<page-id>\]\]/);
+  assert.match(llm.requests[0]!.user, /- work: Work docs/);
+  assert.match(llm.requests[0]!.user, /<page wiki="home" id="concepts\/home-lab"/);
+  for (const w of [work, home]) assert.match(readLog(w).at(-1)!.body, /Cross-wiki query together with/);
+});

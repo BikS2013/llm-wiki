@@ -9,9 +9,19 @@ export type ConfigTier = 'shell' | 'tool-agents-env' | 'local-env' | 'cli';
 
 const TIER_ORDER: ConfigTier[] = ['shell', 'tool-agents-env', 'local-env', 'cli'];
 
+/** Higher number = higher priority. */
+export function tierRank(tier: ConfigTier): number {
+  return TIER_ORDER.indexOf(tier);
+}
+
 /** `~/.tool-agents/llm-wiki` — the tool's private configuration folder. */
 export function toolConfigDir(): string {
   return path.join(os.homedir(), '.tool-agents', TOOL_NAME);
+}
+
+/** `~/.tool-agents/llm-wiki/wikis.json` — the registry of named wikis. */
+export function registryFile(): string {
+  return path.join(toolConfigDir(), 'wikis.json');
 }
 
 /** Creates `~/.tool-agents/llm-wiki/` (0700) and an empty `.env` (0600) when missing. */

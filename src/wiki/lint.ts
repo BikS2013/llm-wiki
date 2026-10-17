@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { LinkResolver, listPages, listRawFiles, type Page, type WikiPaths } from './layout.js';
+import { foreignPageFiles, LinkResolver, listPages, listRawFiles, type Page, type WikiPaths } from './layout.js';
 import { indexIsStale } from './index.js';
 import { IngestLedger, ParseLedger } from '../ops/ledger.js';
 import { isParsableDocument } from '../ops/extract.js';
@@ -21,7 +21,9 @@ export interface LintFinding {
     | 'index-stale'
     | 'raw-not-ingested'
     | 'original-not-parsed'
-    | 'no-outbound-links';
+    | 'no-outbound-links'
+    | 'foreign-format-file'
+    | 'unconverted-wikilink';
   page?: string;
   message: string;
 }
@@ -34,19 +36,26 @@ export interface LintReport {
 /** Deterministic, LLM-free health check of the wiki's structure. */
 export function lintStructure(paths: WikiPaths): LintReport {
   const pages = listPages(paths);
+  const html = paths.format.name === 'html';
   const resolver = new LinkResolver(pages);
   const findings: LintFinding[] = [];
   const inbound = new Map<string, number>(pages.map((p) => [p.id, 0]));
 
   for (const p of pages) {
-    if (Object.keys(p.frontmatter).length === 0) findings.push({ severity: 'warning', code: 'missing-frontmatter', page: p.id, message: `${p.id} has no frontmatter (title/summary/type/updated).` });
+    if (Object.keys(p.frontmatter).length === 0) findings.push({ severity: 'warning', code: 'missing-frontmatter', page: p.id, message: html ? `${p.id} has no metadata block (<script type="application/json" id="llm-wiki-meta"> with title/summary/type/updated).` : `${p.id} has no frontmatter (title/summary/type/updated).` });
     else {
       if (typeof p.frontmatter.summary !== 'string' || p.frontmatter.summary.trim() === '') findings.push({ severity: 'info', code: 'missing-summary', page: p.id, message: `${p.id} has no \`summary:\` in frontmatter; the index will fall back to the first paragraph.` });
       if (typeof p.frontmatter.type !== 'string') findings.push({ severity: 'info', code: 'missing-type', page: p.id, message: `${p.id} has no \`type:\` in frontmatter; inferred "${p.type}" from its folder.` });
     }
-    if (p.body.trim().replace(/^#.*$/m, '').trim() === '') findings.push({ severity: 'warning', code: 'empty-page', page: p.id, message: `${p.id} has no content beyond its heading.` });
+    if (p.text.trim().replace(/^#.*$/m, '').trim() === '') findings.push({ severity: 'warning', code: 'empty-page', page: p.id, message: `${p.id} has no content beyond its heading.` });
     let outbound = 0;
+    let unconverted = 0;
     for (const link of p.links) {
+      if (link.target.startsWith('raw/')) {
+        if (!fs.existsSync(path.join(paths.root, link.target))) findings.push({ severity: 'error', code: 'dangling-link', page: p.id, message: `${p.id} links to ${link.target}, which is not in raw/.` });
+        continue;
+      }
+      if (html && link.kind === 'wiki') unconverted++;
       const target = resolver.resolve(link.target, p.id);
       if (!target) {
         findings.push({ severity: 'error', code: 'dangling-link', page: p.id, message: `${p.id} links to [[${link.target}]] which does not exist.` });
@@ -57,6 +66,7 @@ export function lintStructure(paths: WikiPaths): LintReport {
         outbound++;
       }
     }
+    if (unconverted > 0) findings.push({ severity: 'info', code: 'unconverted-wikilink', page: p.id, message: `${p.id} holds ${unconverted} [[wikilink(s)]] that are not HTML links yet. Run \`llm-wiki index\` to convert them.` });
     if (outbound === 0 && p.type !== 'lint') findings.push({ severity: 'info', code: 'no-outbound-links', page: p.id, message: `${p.id} links to no other page.` });
   }
   for (const p of pages) {
@@ -72,7 +82,10 @@ export function lintStructure(paths: WikiPaths): LintReport {
   for (const [base, group] of byBase) {
     if (group.length > 1) findings.push({ severity: 'warning', code: 'basename-collision', message: `Several pages share the basename "${base}": ${group.map((g) => g.id).join(', ')}. Short [[${base}]] links are ambiguous; use the full id.` });
   }
-  if (indexIsStale(paths, pages)) findings.push({ severity: 'warning', code: 'index-stale', message: 'wiki/index.md is out of date. Run `llm-wiki index` (or `llm-wiki lint --fix`).' });
+  if (indexIsStale(paths, pages)) findings.push({ severity: 'warning', code: 'index-stale', message: `${paths.relToRoot(paths.index)} is out of date. Run \`llm-wiki index\` (or \`llm-wiki lint --fix\`).` });
+  for (const abs of foreignPageFiles(paths)) {
+    findings.push({ severity: 'warning', code: 'foreign-format-file', message: `${paths.relToRoot(abs)} is not a ${paths.format.name} page, so the tool ignores it (this is a ${paths.format.name} wiki; pages end in ${paths.format.ext}).` });
+  }
 
   const ledger = new IngestLedger(paths);
   const parsed = new ParseLedger(paths);

@@ -1,9 +1,5 @@
-import { pageExists, writePage, type WikiPaths } from '../wiki/layout.js';
+import { pageExists, type WikiPaths } from '../wiki/layout.js';
 import { WikiLayoutError } from '../errors.js';
-
-export function writePageFile(paths: WikiPaths, id: string, content: string): string {
-  return writePage(paths, id, content);
-}
 
 /** Picks an unused page id `folder/slug`, `folder/slug-2`, ... */
 export function freePageId(paths: WikiPaths, folder: string, slug: string): string {
