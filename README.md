@@ -6,8 +6,8 @@ A TypeScript implementation of Andrej Karpathy's **LLM Wiki** pattern — the id
 
 A 30-slide walkthrough of setup, the daily loop, documents (PDF, Word, PowerPoint, Excel, images), agent integration, and several wikis in markdown or HTML, in the BikS2013 theme:
 
-- **[View the deck](https://biks2013.github.io/llm-wiki/presentations/llm-wiki-user-guide.html)** (HTML, arrow keys to navigate; double-click text to edit, right-click for the menu)
-- [PDF](https://biks2013.github.io/llm-wiki/presentations/llm-wiki-user-guide.pdf) · [PowerPoint](https://github.com/BikS2013/llm-wiki/raw/main/docs/presentations/llm-wiki-user-guide.pptx)
+- **[View the deck](https://biks2013-tools.github.io/llm-wiki/presentations/llm-wiki-user-guide.html)** (HTML, arrow keys to navigate; double-click text to edit, right-click for the menu)
+- [PDF](https://biks2013-tools.github.io/llm-wiki/presentations/llm-wiki-user-guide.pdf) · [PowerPoint](https://github.com/biks2013-tools/llm-wiki/raw/main/docs/presentations/llm-wiki-user-guide.pptx)
 
 ## What it implements from the spec
 
@@ -188,6 +188,16 @@ sources: [raw/some-article.md]
 
 Links use wikilinks: [[analytical-engine]] or [[concepts/analytical-engine|the Engine]].
 ```
+
+## Web pages
+
+Pages that build their content with JavaScript are detected and printed to PDF in a headless browser (`LLM_WIKI_BROWSER`), then converted by the parser model; `--render` does that for any page. `llm-wiki --wiki <name> sources check` compares every downloaded page and every file ingested from outside the wiki with its stored copy by SHA-256 (web pages by their text, after a conditional request), and `sources update` re-ingests the changed ones as new dated originals.
+
+`llm-wiki --wiki <name> ingest https://…` downloads a page (or an online PDF, Office file or image) into `raw/web/`, keeps that copy unmodified, converts a web page's main content to markdown locally (URL in the frontmatter), and ingests it. `parse <url>` stops after the conversion.
+
+## Wiki Explorer (desktop app)
+
+[`wiki-explorer`](../wiki-explorer) is a SwiftUI macOS app built on this CLI: browse the registered wikis and their pages, follow links and backlinks, search one or all wikis, ask questions with clickable source citations, add files or URLs, and create wikis. It uses `pages --json`, `show --json` (pages rendered to HTML with `llmwiki://` links) and the citations in `query --json`.
 
 ## Develop
 

@@ -152,18 +152,39 @@ export function hrefBetween(fromId: string, target: string): string {
   return path.posix.relative(fromDir, to).split('/').map(encodeURIComponent).join('/');
 }
 
-function wikilinksToAnchors(text: string, fromId: string, resolve: LinkTargetResolver): string {
+/** Builds the `<a>` element for one `[[target#heading|alias]]` wikilink. */
+export type WikilinkRenderer = (target: string, label: string, heading: string | undefined) => string;
+
+function replaceWikilinks(text: string, render: WikilinkRenderer): string {
   return text.replace(WIKILINK_RE, (_m, rawTarget: string, heading: string | undefined, alias: string | undefined) => {
     const target = rawTarget.trim();
-    const label = escapeHtml((alias ?? target).trim());
+    return render(target, escapeHtml((alias ?? target).trim()), heading?.trim());
+  });
+}
+
+function wikilinksToAnchors(text: string, fromId: string, resolve: LinkTargetResolver): string {
+  return replaceWikilinks(text, (target, label, heading) => {
     const resolved = resolve(target);
     if (resolved === undefined) {
       const guess = target.replace(/\\/g, '/').replace(/\.(md|html?)$/i, '').replace(/^wiki\//, '');
       return `<a class="wikilink wikilink-missing" href="${hrefBetween(fromId, guess)}">${label}</a>`;
     }
-    const anchor = heading ? `#${encodeURIComponent(heading.trim().toLowerCase().replace(/\s+/g, '-'))}` : '';
+    const anchor = heading ? `#${encodeURIComponent(heading.toLowerCase().replace(/\s+/g, '-'))}` : '';
     return `<a class="wikilink" href="${hrefBetween(fromId, resolved)}${anchor}">${label}</a>`;
   });
+}
+
+/**
+ * Renders markdown (or an HTML fragment) to sanitised HTML, letting the caller decide what each
+ * `[[wikilink]]` becomes — used for viewers that need their own link targets (e.g. `llmwiki://` URLs).
+ */
+export function renderWithLinks(body: string, render: WikilinkRenderer): string {
+  const trimmed = body.trim();
+  if (trimmed === '') return '';
+  const html = trimmed.startsWith('<')
+    ? outside(trimmed, HTML_CODE, (s) => replaceWikilinks(s, render))
+    : (marked.parse(outside(trimmed, MD_CODE, (s) => replaceWikilinks(s, render)), { async: false, gfm: true }) as string).trim();
+  return sanitizeHtml(html);
 }
 
 /** Best-effort removal of active content; the page CSP (`script-src 'none'`) is the real barrier. */
@@ -243,6 +264,11 @@ export const htmlFormat: PageFormat = {
     let html: string;
     if (trimmed.startsWith('<')) html = outside(trimmed, HTML_CODE, (s) => wikilinksToAnchors(s, fromId, resolve));
     else html = (marked.parse(outside(trimmed, MD_CODE, (s) => wikilinksToAnchors(s, fromId, resolve)), { async: false, gfm: true }) as string).trim();
+    // Relative links to wiki pages written as `.md` (markdown habits) point at the `.html` page instead.
+    html = html.replace(/href="([^":?#]+)\.md(#[^"]*)?"/gi, (m, target: string, hash: string | undefined) => {
+      const rel = path.posix.normalize(path.posix.join(path.posix.dirname(`wiki/${fromId}`), target));
+      return rel.startsWith('wiki/') ? `href="${target}.html${hash ?? ''}"` : m;
+    });
     return sanitizeHtml(html);
   },
   render: (frontmatter, body, id) => {

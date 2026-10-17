@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { tierRank, type Config } from './env.js';
 import { ConfigError } from '../errors.js';
@@ -127,4 +128,16 @@ export function parserSettings(config: Config): ParserSettings {
 /** True when the user has configured an embedding provider, so hybrid search is possible. */
 export function embeddingsConfigured(config: Config): boolean {
   return config.has('LLM_WIKI_EMBEDDING_PROVIDER') && config.has('LLM_WIKI_EMBEDDING_MODEL');
+}
+
+/**
+ * Absolute path of the Chromium-family browser (Chrome, Chromium, Edge, Brave) used to render pages that
+ * build their content with JavaScript. Optional: undefined when not set; the operation that needs it then
+ * raises a ConfigError naming LLM_WIKI_BROWSER.
+ */
+export function browserPath(config: Config): string | undefined {
+  const value = config.get('LLM_WIKI_BROWSER');
+  if (value === undefined) return undefined;
+  if (!fs.existsSync(value)) throw new ConfigError(`LLM_WIKI_BROWSER=${value} does not exist; point it at a Chromium-family browser executable.`);
+  return value;
 }

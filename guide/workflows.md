@@ -27,10 +27,22 @@ llm-wiki --wiki research ingest ~/Downloads/attention.md --dry-run --json
 # PDF / DOCX: converted by the parser model to raw/<name>.pdf.md, then compiled
 llm-wiki --wiki research ingest ~/Downloads/paper.pdf
 
+# a web page or an online document: downloaded into raw/web/ and kept, then compiled
+llm-wiki --wiki research ingest https://example.com/blog/attention-explained
+
 # several files, or every source in raw/ not ingested yet
 llm-wiki --wiki research ingest a.md b.pdf c.docx
 llm-wiki --wiki research ingest
 ```
+A URL is downloaded into `raw/web/<host>-<path>.<ext>` and that copy is kept unmodified. A web page is also
+converted locally (no LLM) to `raw/web/<name>.html.md` — its main content (`<article>`/`<main>`), without
+navigation, scripts and footers, with the URL in the frontmatter — and that conversion is ingested; a PDF,
+Office file or image is converted like a local one. Downloading the same URL again reuses an identical copy;
+a changed page is kept as a new, dated original. A web page whose content is built by JavaScript (an almost
+empty application shell, a "please enable JavaScript" notice) is opened in a headless browser and printed to
+PDF — the PDF is kept as the original and converted by the parser model. This needs `LLM_WIKI_BROWSER`
+(Chrome, Chromium, Edge or Brave executable); `--render` prints any page that way. `parse <url>` downloads and
+converts without ingesting.
 Unchanged sources are skipped (tracked by hash); `--force` re-ingests. Sources larger than
 `--max-source-chars` are refused, never truncated. After ingest, the index, the search index and
 the log are already updated.
@@ -132,3 +144,22 @@ the sections the template owns (Layout, Page format, Operations, Tools, Working 
 HTML versions, every other section (e.g. your domain conventions) is kept. `--keep-schema` leaves both files
 untouched. Embeddings are recomputed on the next `index --embed`, because page text changes slightly.
 
+## 12. Keep outside sources current
+
+Web pages (URLs) and files ingested from outside the wiki folder are remembered with their SHA-256. Check them:
+```bash
+llm-wiki --wiki research sources check --json        # unchanged | changed | missing | error, per source
+llm-wiki --wiki research sources update --dry-run    # what would be re-ingested
+llm-wiki --wiki research sources update --json       # re-ingest the changed ones
+```
+URLs are re-requested with `If-None-Match` / `If-Modified-Since` first (a 304 means unchanged); web pages
+are compared by the hash of their readable text, so markup, scripts, ads and timestamps do not count as
+changes; pages printed to PDF are compared by their rendered text; everything else by bytes. A changed source
+is kept as a new, dated raw original (`raw/notes-2026-10-17.md`, `raw/web/<name>-2026-10-17.html`) — the old
+copy stays — and is ingested again, so the wiki pages are updated from the new version.
+
+## 13. Browse wikis in a desktop app
+
+`wiki-explorer` (a SwiftUI macOS app next to the llm-wiki repo) is a graphical front end built entirely on
+this CLI's JSON: `wikis list`, `pages`, `show`, `search`, `query`, `ingest` (files and URLs) and `init`. It
+renders pages from `show --json` and follows the `llmwiki://` links. Any other viewer can do the same.

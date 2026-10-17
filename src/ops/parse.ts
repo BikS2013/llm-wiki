@@ -6,7 +6,7 @@ import { sha256 } from '../search/store.js';
 import type { WikiPaths } from '../wiki/layout.js';
 import { firstHeading, todayIso, withFrontmatter } from '../wiki/markdown.js';
 import { defaultExtractors, documentKind, documentMime, type Extractors } from './extract.js';
-import { ParseLedger } from './ledger.js';
+import { FetchLedger, ParseLedger } from './ledger.js';
 import { parseInstruction, parseSystemPrompt } from './prompts.js';
 import { stageSource } from './stage.js';
 
@@ -140,9 +140,11 @@ export async function parseDocument(paths: WikiPaths, parser: DocumentParser | (
   const by = parsedBy === 'llm-wiki/xlsx-reader' ? 'by llm-wiki locally (no LLM; cell values as stored, formulas as their last calculated value, or as the formula when the file holds none)' : `by ${parsedBy}`;
   const provenance = `> **Converted from the original ${what} [[${originalRel}]]** (${(bytes.length / 1024).toFixed(0)} KB, sha256 ${hash.slice(0, 12)}…) ${by} on ${today}. The original is kept unmodified in \`raw/\`; this markdown is the version the wiki reads and cites.${notes.length ? `\n>\n> Not converted: ${notes.join('; ')}.` : ''}`;
   if (notes.length) log(`not converted: ${notes.join('; ')}`);
+  const fetched = new FetchLedger(paths).get(originalRel);
   const content = withFrontmatter(
     {
       title,
+      ...(fetched ? { url: fetched.finalUrl } : {}),
       original: originalRel,
       original_type: kind,
       original_sha256: hash,

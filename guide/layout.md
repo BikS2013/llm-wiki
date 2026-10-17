@@ -17,7 +17,9 @@ A wiki root (created by `llm-wiki init <dir> --format markdown|html`) contains t
     concepts/     ideas, methods, themes
     syntheses/    filed answers (`query --file`), comparisons, analyses
     lint/         dated health-check reports (`lint --report`)
-  .llm-wiki/      tool state: wiki.json (the page format), search index, embeddings, ingest ledger (do not edit)
+  raw/web/        pages and documents downloaded by `ingest <url>` / `parse <url>` (kept unmodified)
+  .llm-wiki/      tool state: wiki.json (the page format), search index, embeddings, ingest/parse ledgers, fetched.json
+                  (URLs with their hashes/ETags) and origins.json (outside files with their hashes) — do not edit
   CLAUDE.md       the wiki's schema/contract for agents (AGENTS.md is a copy)
 ```
 

@@ -43,6 +43,7 @@ description: Use the llm-wiki CLI to manage the user's personal LLM-maintained w
 | "what would change if I added…" | `llm-wiki --wiki X ingest <file> --dry-run --json` |
 | "what does my wiki say about …" | `llm-wiki --wiki X query "<q>" --json` |
 | "what do my wikis say about …" / question spanning subjects | `llm-wiki query "<q>" --wikis X,Y --json` (or `--all-wikis`); cite as `[[wiki:page]]` |
+| "add this web page / link to my X wiki" | `llm-wiki --wiki X ingest <url> --json` |
 | "save that answer in the wiki" | `llm-wiki --wiki X query "<q>" --file --json` |
 | "find/where are my notes on …" (wiki known) | `llm-wiki --wiki X search "<terms>" --json` |
 | "search all my wikis for …" | `llm-wiki search "<terms>" --all-wikis --json` |

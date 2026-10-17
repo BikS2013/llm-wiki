@@ -1,6 +1,6 @@
 {
   "name": "llm-wiki",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "TypeScript implementation of Andrej Karpathy's LLM Wiki pattern: an LLM-maintained, interlinked markdown wiki compiled from raw sources, with local BM25/vector search, ingest, query, lint, and an MCP server.",
   "type": "module",
   "bin": {

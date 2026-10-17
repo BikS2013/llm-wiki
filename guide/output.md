@@ -25,15 +25,52 @@ Scores are comparable within one call only. With several wikis, scores are rank-
 ## `query --json` (one wiki; see below for several)
 ```json
 { "wiki": "work", "question": "…", "answer": "markdown with citations",
+  "answerHtml": "<p>… <a class=\"wikilink\" href=\"llmwiki://open?wiki=work&amp;page=concepts%2Fdeploy\">Deploy pipeline</a></p>",
+  "citations": [{ "wiki": "work", "id": "concepts/deploy", "title": "Deploy pipeline", "path": "wiki/concepts/deploy.md" }],
   "pagesUsed": ["wiki/concepts/deploy.md"], "filedAs": "wiki/syntheses/….md" }   // .html in HTML wikis
 ```
-`filedAs` is null unless `--file`.
+`filedAs` is null unless `--file`. `answerHtml` is the answer rendered to sanitised HTML with its citations
+as `llmwiki://` links (see `show` below); `citations` lists the distinct pages it cites, in order.
 
 With `--wikis a,b` / `--all-wikis` (more than one usable wiki):
 ```json
 { "wikis": ["ai-committee", "research"], "question": "…", "answer": "markdown citing [[wiki:page-id]]",
+  "answerHtml": "…", "citations": [{ "wiki": "research", "id": "concepts/rag", "title": "RAG", "path": "wiki/concepts/rag.md" }],
   "pagesUsed": ["ai-committee:wiki/entities/sofia.html", "research:wiki/concepts/rag.md"] }
 ```
+
+## `sources check --json`
+```json
+{ "wiki": "research", "sources": [
+  { "kind": "url", "origin": "https://example.com/post", "raw": "raw/web/example.com-post.html",
+    "status": "changed", "since": "2026-10-17T06:12:00.000Z" },
+  { "kind": "file", "origin": "/Users/me/notes/plan.md", "raw": "raw/plan.md", "status": "missing",
+    "detail": "the outside file no longer exists", "since": "…" } ] }
+```
+`status`: `unchanged`, `changed`, `missing` (outside file gone), `error` (`detail` says why). `sources update
+--json` returns `{wiki, dryRun, checked: [...as above], updated: [{origin, source, original, skipped, title,
+changes:[{op, page, reason}]}]}`.
+
+## `pages --json`
+```json
+{ "wiki": "work", "format": "html", "root": "/abs/path",
+  "pages": [{ "id": "concepts/deploy", "path": "wiki/concepts/deploy.html", "title": "Deploy pipeline",
+              "type": "concept", "summary": "…", "updated": "2026-10-17", "sources": ["raw/notes.md"] }] }
+```
+
+## `show <page> --json`
+```json
+{ "wiki": "work", "format": "html", "id": "concepts/deploy", "path": "wiki/concepts/deploy.html",
+  "abs": "/abs/path/wiki/concepts/deploy.html", "title": "Deploy pipeline", "type": "concept",
+  "summary": "…", "updated": "2026-10-17", "sources": ["raw/notes.md"], "frontmatter": { "...": "..." },
+  "html": "<h1>Deploy pipeline</h1>…",
+  "links": [{ "id": "entities/ci", "title": "CI server" }], "backlinks": [{ "id": "sources/notes", "title": "Notes" }],
+  "sourceFiles": [{ "path": "raw/notes.md", "abs": "/abs/path/raw/notes.md", "exists": true }] }
+```
+`html` is the page body as sanitised HTML in either format — markdown is rendered, `[[wikilinks]]` and relative
+links resolved. Links use one URL scheme a viewer can intercept: `llmwiki://open?wiki=<name>&page=<page-id>`
+for wiki pages, `llmwiki://open?wiki=<name>&raw=<raw/path>` for source files; external links are unchanged.
+Links written without a display name show the page title.
 
 ## `ingest --json`
 ```json

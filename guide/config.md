@@ -12,6 +12,7 @@ There are no defaults: a setting that a command needs but cannot find raises a c
 |---|---|---|---|
 | `LLM_WIKI_NAME` | `--wiki` | wiki-bound commands (optional) | registered wiki to use |
 | `LLM_WIKI_ROOT` | `--root` | wiki-bound commands (optional) | wiki directory to use (alternative to a name) |
+| `LLM_WIKI_BROWSER` | — | `ingest`/`parse` of a URL whose page needs JavaScript, `--render`, `sources check` of such pages | absolute path of a Chromium-family browser executable (Chrome, Chromium, Edge, Brave) used headless to render and print pages to PDF |
 | `LLM_WIKI_FORMAT` | `init --format` | init of a new wiki | page format of the new wiki: `markdown` or `html`; recorded in `.llm-wiki/wiki.json`, ignored afterwards |
 | `LLM_WIKI_PROVIDER` | `--provider` | ingest, query, lint --llm | chat provider |
 | `LLM_WIKI_MODEL` | `--model` | ingest, query, lint --llm | chat model (Azure OpenAI uses `AZURE_OPENAI_DEPLOYMENT`) |

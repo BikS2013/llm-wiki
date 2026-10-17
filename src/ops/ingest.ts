@@ -15,6 +15,7 @@ import { applyPageChanges, type AppliedChange, type PageChange } from './pages.j
 import { ingestSystemPrompt } from './prompts.js';
 import { stageSource } from './stage.js';
 import { isParsableDocument, needsParserLlm, unsupportedHint } from './extract.js';
+import { fetchToRaw, isUrl, type FetchOptions } from './fetch.js';
 import { markdownPathFor, parseDocument, type ParseOptions } from './parse.js';
 import type { DocumentParser } from '../llm/types.js';
 import { parseFrontmatter } from '../wiki/markdown.js';
@@ -25,6 +26,8 @@ export interface IngestOptions {
   /** Supplies the parser LLM lazily; only called when the source is a PDF/DOCX/PPTX original or an image. */
   parser?: (() => DocumentParser) | undefined;
   parse?: Pick<ParseOptions, 'force' | 'maxTokens' | 'maxBytes' | 'maxImages' | 'extractors'> | undefined;
+  /** URL sources: renders pages that need JavaScript (LLM_WIKI_BROWSER); `render` forces it for every page. */
+  fetch?: Pick<FetchOptions, 'renderer' | 'render'> | undefined;
   dryRun: boolean;
   maxTokens: number;
   relatedLimit: number;
@@ -70,6 +73,8 @@ function isPlanJson(v: unknown): v is { title: string; takeaways: string[]; summ
 
 export async function ingestSource(config: Config, paths: WikiPaths, llm: ChatClient, file: string, opts: IngestOptions): Promise<IngestResult> {
   const log = opts.onEvent ?? (() => undefined);
+  // A URL is downloaded into raw/web/ first (a web page also gets its local markdown conversion).
+  if (isUrl(file)) file = (await fetchToRaw(paths, file, { maxBytes: opts.parse?.maxBytes ?? 30_000_000, renderer: opts.fetch?.renderer, render: opts.fetch?.render, onEvent: log })).sourceRel;
   let sourceRel = stageSource(paths, file);
   let originalRel: string | undefined;
   if (isParsableDocument(sourceRel)) {
@@ -167,6 +172,8 @@ export function pendingSources(paths: WikiPaths): string[] {
       if (!parsed.isCurrent(rel, bytes) || !fs.existsSync(path.join(paths.root, markdownPathFor(rel)))) pending.push(rel);
       continue;
     }
+    // A text original that was converted (a downloaded web page) is ingested through its conversion.
+    if (parsed.get(rel)) continue;
     if (isTextSource(abs) && !ledger.isIngested(rel, fs.readFileSync(abs))) pending.push(rel);
   }
   return pending;

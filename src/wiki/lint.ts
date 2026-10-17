@@ -98,6 +98,7 @@ export function lintStructure(paths: WikiPaths): LintReport {
       }
       continue;
     }
+    if (parsed.get(rel)) continue; // converted text original (a downloaded web page): its .md conversion is the source
     if (!ledger.isIngested(rel, fs.readFileSync(abs))) findings.push({ severity: 'info', code: 'raw-not-ingested', message: `${rel} is in raw/ but has not been ingested (or changed since). Run \`llm-wiki ingest ${rel}\`.` });
   }
   const order: Record<Severity, number> = { error: 0, warning: 1, info: 2 };

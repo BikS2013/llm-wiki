@@ -60,7 +60,7 @@ TypeScript implementation of Andrej Karpathy's **LLM Wiki** pattern (gist `karpa
 - `src/wiki/` — layout (`raw/`, `wiki/`, `.llm-wiki/`), `format.ts` (the markdown and HTML page formats), markdown/frontmatter/wikilink parsing, index generation, the log, structural lint, and `registry.ts` (named wikis in `~/.tool-agents/llm-wiki/wikis.json`).
 - `src/search/` — tokenizer, BM25, embeddings cache, incremental chunk index, hybrid (RRF) search.
 - `src/llm/` — provider factory for the eight standard providers (OpenAI, Anthropic, Gemini, Azure OpenAI, Azure Anthropic/Foundry, Ollama, LiteLLM, MLX).
-- `src/ops/` — `init`, `ingest`, `query`, semantic `lint`, page-change application, `parse` (PDF/DOCX/PPTX/images → markdown via the dedicated parser LLM, XLSX locally; `extract.ts` routes file types and runs pdf.js/mammoth, `office.ts` reads PPTX/XLSX packages with jszip), `convert`.
+- `src/ops/` — `init`, `ingest`, `query`, semantic `lint`, page-change application, `parse` (PDF/DOCX/PPTX/images → markdown via the dedicated parser LLM, XLSX locally; `extract.ts` routes file types and runs pdf.js/mammoth, `office.ts` reads PPTX/XLSX packages with jszip), `convert`, `fetch.ts` (ingest/parse of http(s) URLs into `raw/web/`), `viewer.ts` (`pages` / `show` / query `answerHtml` for GUI viewers, `llmwiki://` link scheme).
 - `src/mcp/` — MCP stdio server exposing `wiki_*` tools.
 - `templates/CLAUDE.md` — the schema written into every new wiki root.
 - `guide/*.md` + `src/guide.ts` — the `llm-wiki guide` manual for people and agents; the `commands` topic is generated from the commander tree, the other topics are the markdown files. Update them whenever a command, option, JSON shape or rule changes.
@@ -87,4 +87,5 @@ pnpm link:global  # build and install the `llm-wiki` OS command (pnpm unlink:glo
 
 ## Tools
 
+- **wiki-explorer** (sibling folder `../wiki-explorer`) — SwiftUI macOS front end that drives this CLI through its `--json` output; keep `pages`/`show`/`query`/`ingest` JSON shapes backward compatible or update the app's `Models.swift` with them.
 - **llm-wiki** — Karpathy-style LLM wiki: compiles raw sources into interlinked markdown or HTML wikis (several, kept in a named registry) and indexes/searches them locally (BM25, vector, hybrid, across wikis), with ingest, query, lint and an MCP server. See `docs/tools/llm-wiki.md`.

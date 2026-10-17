@@ -19,15 +19,19 @@ import { formatLintReport, lintStructure } from './wiki/lint.js';
 import { initWiki, isExistingWiki } from './ops/init.js';
 import { linkHtmlPages } from './ops/pages.js';
 import { convertToHtml } from './ops/convert.js';
+import { listPageSummaries, renderAnswer, viewPage } from './ops/viewer.js';
+import { checkSources, chromiumRenderer, fetchToRaw, isUrl, type PageRenderer, type SourceCheck } from './ops/fetch.js';
+import { browserPath } from './config/settings.js';
 import { parseWikiFormat } from './wiki/format.js';
 import { ingestSource, pendingSources } from './ops/ingest.js';
 import { parseDocument } from './ops/parse.js';
+import { isParsableDocument } from './ops/extract.js';
 import { queryWiki, queryWikis, type WikiTarget } from './ops/query.js';
 import { fileLintReport, lintSemantic, renderSemanticLint } from './ops/lint-llm.js';
 import { serveMcp } from './mcp/server.js';
 import { GUIDE_TOPICS, guideJson, parseTopic, renderGuide, renderTopic } from './guide.js';
 
-const VERSION = '0.4.0';
+const VERSION = '0.6.0';
 
 const program = new Command();
 const info = (msg: string) => process.stderr.write(`${msg}\n`);
@@ -323,7 +327,7 @@ wikis
 program
   .command('ingest')
   .description('compile one or more raw sources into the wiki with the configured LLM')
-  .argument('[files...]', 'source files (outside raw/ they are copied in); omit to ingest every pending source')
+  .argument('[files...]', 'source files (outside raw/ they are copied in) or http(s) URLs (downloaded into raw/web/); omit to ingest every pending source')
   .option('--force', 're-ingest even if the source is unchanged', false)
   .option('--dry-run', 'show the proposed page changes without writing', false)
   .option('--max-tokens <n>', 'reply token limit', intArg, 32000)
@@ -334,8 +338,9 @@ program
   .option('--parse-max-tokens <n>', 'reply token limit for the parser LLM', intArg, 64000)
   .option('--max-bytes <n>', 'refuse originals (PDF, DOCX, PPTX, XLSX, images) above this many bytes', intArg, 30000000)
   .option('--max-images <n>', 'PPTX: send at most this many slide pictures to the parser LLM', intArg, 40)
+  .option('--render', 'URLs: render every page in the headless browser and keep it as PDF (LLM_WIKI_BROWSER); pages that need JavaScript are rendered anyway', false)
   .option('--json', 'machine-readable output on stdout (progress stays on stderr)', false)
-  .action(async (files: string[], opts: { force: boolean; dryRun: boolean; maxTokens: number; related: number; contextChars: number; maxSourceChars: number; reparse: boolean; parseMaxTokens: number; maxBytes: number; maxImages: number; json: boolean }) => {
+  .action(async (files: string[], opts: { force: boolean; dryRun: boolean; maxTokens: number; related: number; contextChars: number; maxSourceChars: number; reparse: boolean; parseMaxTokens: number; maxBytes: number; maxImages: number; render: boolean; json: boolean }) => {
     const config = loadConfig();
     const paths = await openWiki(config, 'ingest');
     const targets = files.length > 0 ? files : pendingSources(paths).map((rel) => `${paths.root}/${rel}`);
@@ -358,6 +363,7 @@ program
         maxSourceChars: opts.maxSourceChars,
         parser: getParser,
         parse: { force: opts.reparse, maxTokens: opts.parseMaxTokens, maxBytes: opts.maxBytes, maxImages: opts.maxImages },
+        fetch: { renderer: rendererFor(config), render: opts.render },
         onEvent: info,
       });
       if (opts.json) {
@@ -389,19 +395,35 @@ program
 program
   .command('parse')
   .description('convert originals into markdown without ingesting: PDF, DOCX, PPTX and images with the dedicated parser LLM, XLSX locally')
-  .argument('<files...>', 'PDF, DOCX, PPTX, XLSX, PNG, JPEG, GIF or WebP files (outside raw/ they are copied in)')
+  .argument('<files...>', 'PDF, DOCX, PPTX, XLSX, PNG, JPEG, GIF or WebP files (outside raw/ they are copied in), or http(s) URLs (downloaded into raw/web/)')
   .option('--force', 're-convert even if the markdown is up to date', false)
   .option('--max-tokens <n>', 'reply token limit for the parser LLM', intArg, 64000)
   .option('--max-bytes <n>', 'refuse originals above this many bytes', intArg, 30000000)
   .option('--max-images <n>', 'PPTX: send at most this many slide pictures to the parser LLM', intArg, 40)
+  .option('--render', 'URLs: render the page in the headless browser and keep it as PDF (LLM_WIKI_BROWSER)', false)
   .option('--json', 'machine-readable output', false)
-  .action(async (files: string[], opts: { force: boolean; maxTokens: number; maxBytes: number; maxImages: number; json: boolean }) => {
+  .action(async (files: string[], opts: { force: boolean; maxTokens: number; maxBytes: number; maxImages: number; render: boolean; json: boolean }) => {
     const config = loadConfig();
     const paths = await openWiki(config, 'parse');
     let client: ReturnType<typeof createParserClient> | undefined;
     const parser = () => (client ??= createParserClient(config));
     const results: Array<{ original: string; markdown: string; skipped: boolean }> = [];
-    for (const file of files) {
+    for (const arg of files) {
+      let file = arg;
+      if (isUrl(arg)) {
+        const f = await fetchToRaw(paths, arg, { maxBytes: opts.maxBytes, renderer: rendererFor(config), render: opts.render, onEvent: info });
+        if (f.sourceRel !== f.originalRel) {
+          results.push({ original: f.originalRel, markdown: f.sourceRel, skipped: false });
+          if (!opts.json) process.stdout.write(`converted: ${f.originalRel} -> ${f.sourceRel}\n`);
+          continue;
+        }
+        if (!isParsableDocument(f.originalRel)) {
+          if (!opts.json) process.stdout.write(`downloaded: ${f.originalRel} (a text source; ingest it directly)\n`);
+          results.push({ original: f.originalRel, markdown: f.originalRel, skipped: true });
+          continue;
+        }
+        file = f.originalRel;
+      }
       const r = await parseDocument(paths, parser, file, { force: opts.force, maxTokens: opts.maxTokens, maxBytes: opts.maxBytes, maxImages: opts.maxImages, onEvent: info });
       results.push({ original: r.originalRel, markdown: r.markdownRel, skipped: r.skipped });
       if (!opts.json) process.stdout.write(`${r.skipped ? 'up to date' : 'converted'}: ${r.originalRel} -> ${r.markdownRel}\n`);
@@ -430,7 +452,10 @@ program
         if (opts.file) throw new LlmWikiError('--file needs one target wiki; a cross-wiki answer cannot be filed. Ask again with --wiki <name> --file to keep it.');
         const llm = createChatClient(config);
         const r = await queryWikis(config, targets, llm, question, { limit: opts.limit, maxPages: opts.pages, contextChars: opts.contextChars, maxTokens: opts.maxTokens, mode: opts.mode, onEvent: info });
-        if (opts.json) process.stdout.write(`${JSON.stringify({ wikis: r.wikis, question, answer: r.answer, pagesUsed: r.pagesUsed }, null, 2)}\n`);
+        if (opts.json) {
+          const rendered = renderAnswer(r.answer, targets);
+          process.stdout.write(`${JSON.stringify({ wikis: r.wikis, question, answer: r.answer, answerHtml: rendered.html, citations: rendered.citations, pagesUsed: r.pagesUsed }, null, 2)}\n`);
+        }
         else process.stdout.write(`${r.answer}\n`);
         return;
       }
@@ -438,7 +463,10 @@ program
       const only = targets[0]!;
       selectedWikiName = only.name;
       const r = await queryWiki(config, only.paths, createChatClient(config), question, { limit: opts.limit, maxPages: opts.pages, contextChars: opts.contextChars, maxTokens: opts.maxTokens, mode: opts.mode, file: opts.file, onEvent: info });
-      if (opts.json) process.stdout.write(`${JSON.stringify({ wiki: only.name, question, answer: r.answer, pagesUsed: r.pagesUsed.map((id) => only.paths.pageRel(id)), filedAs: r.filedAs ? only.paths.pageRel(r.filedAs) : null }, null, 2)}\n`);
+      if (opts.json) {
+        const rendered = renderAnswer(r.answer, [only]);
+        process.stdout.write(`${JSON.stringify({ wiki: only.name, question, answer: r.answer, answerHtml: rendered.html, citations: rendered.citations, pagesUsed: r.pagesUsed.map((id) => only.paths.pageRel(id)), filedAs: r.filedAs ? only.paths.pageRel(r.filedAs) : null }, null, 2)}\n`);
+      }
       else process.stdout.write(`${r.answer}\n`);
       return;
     }
@@ -446,7 +474,8 @@ program
     const llm = createChatClient(config);
     const r = await queryWiki(config, paths, llm, question, { limit: opts.limit, maxPages: opts.pages, contextChars: opts.contextChars, maxTokens: opts.maxTokens, mode: opts.mode, file: opts.file, onEvent: info });
     if (opts.json) {
-      process.stdout.write(`${JSON.stringify({ wiki: selectedWikiName, question, answer: r.answer, pagesUsed: r.pagesUsed.map((id) => paths.pageRel(id)), filedAs: r.filedAs ? paths.pageRel(r.filedAs) : null }, null, 2)}\n`);
+      const rendered = renderAnswer(r.answer, [{ name: wikiLabel(paths), paths }]);
+      process.stdout.write(`${JSON.stringify({ wiki: selectedWikiName, question, answer: r.answer, answerHtml: rendered.html, citations: rendered.citations, pagesUsed: r.pagesUsed.map((id) => paths.pageRel(id)), filedAs: r.filedAs ? paths.pageRel(r.filedAs) : null }, null, 2)}\n`);
       return;
     }
     process.stdout.write(`${r.answer}\n`);
@@ -539,6 +568,107 @@ program
     }
     if (opts.report) info(`filed as ${paths.pageRel(fileLintReport(paths, structural, semantic))}`);
     if (structural.findings.some((f) => f.severity === 'error')) process.exitCode = 1;
+  });
+
+/** Lazily builds the headless-browser renderer from LLM_WIKI_BROWSER (undefined when the setting is absent). */
+function rendererFor(config: Config): (() => PageRenderer) | undefined {
+  const browser = browserPath(config);
+  return browser ? () => chromiumRenderer(browser) : undefined;
+}
+
+/** The name a viewer should use for this wiki in `llmwiki://` links. */
+function wikiLabel(paths: WikiPaths): string {
+  return selectedWikiName ?? openRegistry().nameForRoot(paths.root) ?? '(unregistered)';
+}
+
+const sources = program.command('sources').description('detect changes in outside sources (downloaded URLs, files copied in from outside the wiki) by SHA-256 and re-ingest them');
+
+function printChecks(checks: SourceCheck[]): void {
+  if (checks.length === 0) {
+    process.stdout.write('No outside sources are tracked (URLs and files ingested from outside raw/ are).\n');
+    return;
+  }
+  for (const c of checks) process.stdout.write(`${c.status.padEnd(9)} ${c.kind.padEnd(4)} ${c.origin}\n          → ${c.raw}${c.detail ? ` (${c.detail})` : ''}\n`);
+}
+
+sources
+  .command('check', { isDefault: true })
+  .description('compare every tracked outside source with its latest raw copy (writes nothing)')
+  .option('--max-bytes <n>', 'refuse downloads above this many bytes', intArg, 30000000)
+  .option('--json', 'machine-readable output: {wiki, sources:[{kind, origin, raw, status, detail, since}]}', false)
+  .action(async (opts: { maxBytes: number; json: boolean }) => {
+    const config = loadConfig();
+    const paths = await openWiki(config, 'sources check');
+    const checks = await checkSources(paths, { maxBytes: opts.maxBytes, renderer: rendererFor(config), onEvent: info });
+    if (opts.json) process.stdout.write(`${JSON.stringify({ wiki: selectedWikiName, sources: checks }, null, 2)}\n`);
+    else printChecks(checks);
+  });
+
+sources
+  .command('update')
+  .description('re-ingest every changed outside source: the new version is kept as a new raw original, then compiled into the wiki')
+  .option('--dry-run', 'only report what would be re-ingested', false)
+  .option('--max-bytes <n>', 'refuse downloads above this many bytes', intArg, 30000000)
+  .option('--max-tokens <n>', 'reply token limit', intArg, 32000)
+  .option('--json', 'machine-readable output: {wiki, dryRun, checked, updated:[{origin, source, title, changes}]}', false)
+  .action(async (opts: { dryRun: boolean; maxBytes: number; maxTokens: number; json: boolean }) => {
+    const config = loadConfig();
+    const paths = await openWiki(config, 'sources update');
+    const renderer = rendererFor(config);
+    const checks = await checkSources(paths, { maxBytes: opts.maxBytes, renderer, onEvent: info });
+    const changed = checks.filter((c) => c.status === 'changed');
+    const updated: unknown[] = [];
+    if (!opts.dryRun && changed.length > 0) {
+      const llm = createChatClient(config);
+      let parser: ReturnType<typeof createParserClient> | undefined;
+      for (const c of changed) {
+        info(`updating ${c.origin}`);
+        const r = await ingestSource(config, paths, llm, c.origin, {
+          force: false, dryRun: false, maxTokens: opts.maxTokens, relatedLimit: 8, maxSourceChars: 300000, contextChars: 60000,
+          parser: () => (parser ??= createParserClient(config)),
+          parse: { force: false, maxTokens: 64000, maxBytes: opts.maxBytes, maxImages: 40 },
+          fetch: { renderer },
+          onEvent: info,
+        });
+        updated.push({ origin: c.origin, source: r.sourceRel, original: r.originalRel ?? null, skipped: r.skipped, title: r.plan?.title ?? null, changes: r.applied.map((a) => ({ op: a.op, page: paths.pageRel(a.id), reason: a.reason ?? null })) });
+      }
+    }
+    if (opts.json) {
+      process.stdout.write(`${JSON.stringify({ wiki: selectedWikiName, dryRun: opts.dryRun, checked: checks, updated }, null, 2)}\n`);
+      return;
+    }
+    printChecks(checks);
+    process.stdout.write(changed.length === 0 ? '\nEverything is up to date.\n' : opts.dryRun ? `\n${changed.length} source(s) would be re-ingested.\n` : `\nRe-ingested ${updated.length} source(s).\n`);
+  });
+
+program
+  .command('pages')
+  .description('list the pages of a wiki (id, path, title, type, summary, updated, sources)')
+  .option('--type <type>', 'only pages of this type (overview, entity, concept, source, synthesis, lint, other)')
+  .option('--json', 'machine-readable output: {wiki, format, root, pages:[...]}', false)
+  .action(async (opts: { type?: string; json: boolean }) => {
+    const paths = await openWiki(loadConfig(), 'pages');
+    const pages = listPageSummaries(paths).filter((p) => !opts.type || p.type === opts.type);
+    if (opts.json) {
+      process.stdout.write(`${JSON.stringify({ wiki: wikiLabel(paths), format: paths.format.name, root: paths.root, pages }, null, 2)}\n`);
+      return;
+    }
+    for (const p of pages) process.stdout.write(`${p.id.padEnd(48)} ${p.type.padEnd(10)} ${p.title}\n`);
+  });
+
+program
+  .command('show')
+  .description('show one page: metadata, body rendered to HTML (links as llmwiki:// URLs), links and backlinks')
+  .argument('<page>', 'page id (entities/ada-lovelace), with or without wiki/ and the extension')
+  .option('--json', 'machine-readable output: {wiki, format, id, path, abs, title, type, summary, updated, sources, frontmatter, html, links, backlinks, sourceFiles}', false)
+  .action(async (page: string, opts: { json: boolean }) => {
+    const paths = await openWiki(loadConfig(), 'show');
+    const v = viewPage(paths, wikiLabel(paths), page);
+    if (opts.json) {
+      process.stdout.write(`${JSON.stringify(v, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(`${v.title}  (${v.type}, ${v.path})\n${v.summary ? `${v.summary}\n` : ''}\nlinks to: ${v.links.map((l) => l.id).join(', ') || 'none'}\nlinked from: ${v.backlinks.map((l) => l.id).join(', ') || 'none'}\n`);
   });
 
 program

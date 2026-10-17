@@ -66,6 +66,11 @@ test('HTML pages: wikilinks become relative links, metadata round-trips, active 
   assert.match(engine, /<table>/, 'markdown bodies are rendered to HTML');
   assert.match(engine, /<td><a class="wikilink" href="\.\.\/entities\/ada-lovelace\.html">Ada<\/a><\/td>/);
   assert.match(engine, /<code>\[\[not-a-link\]\]<\/code>/, 'code is left alone');
+  const other = tempWiki('html');
+  applyPageChanges(other, [{ op: 'create', path: 'sources/s', content: '---\ntitle: S\n---\nSee [Ada](../entities/ada-lovelace.md#life) and [the conversion](../../raw/paper.pdf.md).' }]);
+  const src = fs.readFileSync(path.join(other.wiki, 'sources', 's.html'), 'utf8');
+  assert.match(src, /href="\.\.\/entities\/ada-lovelace\.html#life"/, 'relative .md links to pages become .html');
+  assert.match(src, /href="\.\.\/\.\.\/raw\/paper\.pdf\.md"/, 'links into raw/ keep their extension');
 
   const pages = listPages(paths);
   assert.deepEqual(pages.map((p) => p.id), ['concepts/analytical-engine', 'entities/ada-lovelace']);

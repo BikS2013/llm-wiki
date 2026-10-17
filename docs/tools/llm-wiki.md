@@ -139,6 +139,9 @@
         | `index [--raw] [--embed] [--json]` | Regenerate the index (`index.md` / `index.html`) and the search index; in HTML wikis first convert leftover `[[wikilinks]]`; `--embed` also (re)computes embeddings |
         | `lint [--llm] [--fix] [--report] [--json]` | Structural (and, with `--llm`, semantic) health check; writes `lint/<date>.md` |
         | `convert --to html [--dry-run] [--keep-schema] [--json]` | Convert the selected markdown wiki to HTML in place: pages keep ids and metadata, `[[wikilinks]]` / `[text](x.md)` links become relative `.html` links, log/index/search index are rebuilt; The markdown files (pages, `index.md`, `log.md`, replaced schema files) are moved to `.llm-wiki/backup/markdown-<timestamp>/`. A customised `CLAUDE.md`/`AGENTS.md` is merged (template sections replaced, custom sections kept) unless `--keep-schema`. No LLM call |
+        | `sources check [--json]` / `sources update [--dry-run] [--json]` | Compare every outside source (downloaded URLs, files ingested from outside the wiki) with its latest raw copy by SHA-256 — URLs via a conditional request first, web pages by the hash of their readable or rendered text — and re-ingest the changed ones as new dated raw originals |
+        | `pages [--type t] [--json]` | List the pages of the selected wiki: id, path, title, type, summary, updated, sources |
+        | `show <page> [--json]` | One page for viewers: metadata, the body as sanitised HTML with `llmwiki://open?wiki=&page=` / `&raw=` links, outgoing links, backlinks, source files |
         | `log [--last n] [--kind k] [--json]` | Show recent entries from `wiki/log.md` / `wiki/log.html` |
         | `guide [topic] [--topics] [--json]` | Print the complete manual for people and AI agents (see "Built-in guide") |
         | `config` | Print resolved configuration and which tier (shell / tool-agents / local / CLI) each value came from |
@@ -179,6 +182,7 @@
         |---|---|
         | `LLM_WIKI_NAME` | Name of a registered wiki to operate on. Optional; overridable with `--wiki`. |
         | `LLM_WIKI_ROOT` | Absolute path of a wiki root (registered or not). Optional when a wiki is selected by name or by `wikis use`; overridable with `--root`. |
+        | `LLM_WIKI_BROWSER` | Absolute path of a Chromium-family browser (Chrome, Chromium, Edge, Brave). Needed only to ingest/parse web pages that build their content with JavaScript (or with `--render`), which are printed to PDF headless; the tool raises a configuration error naming this setting (and the browsers it found) when such a page is met without it. |
         | `LLM_WIKI_FORMAT` | Page format of a wiki being created: `markdown` or `html`. Required by `init` for a new wiki (no default); overridable with `init --format`. Ignored for existing wikis, whose format is recorded in `.llm-wiki/wiki.json`. |
         | `LLM_WIKI_PROVIDER` | Chat provider used by `ingest` / `query` / `lint --llm`. One of `openai`, `anthropic`, `gemini`, `azure-openai`, `azure-anthropic`, `ollama`, `litellm`, `mlx`. Overridable with `--provider`. |
         | `LLM_WIKI_MODEL` | Chat model name (e.g. `claude-opus-5`, `gpt-5`, `gemini-2.5-pro`, `llama3`). For `azure-openai` the deployment comes from `AZURE_OPENAI_DEPLOYMENT` instead. Overridable with `--model`. |
