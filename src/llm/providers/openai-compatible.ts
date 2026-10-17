@@ -1,12 +1,15 @@
 import OpenAI, { AzureOpenAI } from 'openai';
-import type { ChatClient, ChatRequest, DocumentParser, EmbeddingClient, ParseRequest } from '../types.js';
+import { IMAGE_MIMES, type ChatClient, type ChatRequest, type DocumentParser, type EmbeddingClient, type ParseRequest } from '../types.js';
 import { LlmError } from '../../errors.js';
 
 export interface OpenAiCompatibleOptions {
   provider: string;
   model: string;
   client: OpenAI;
-  /** Whether the endpoint accepts `file` content parts (OpenAI, Azure OpenAI, LiteLLM); local servers get extracted text. */
+  /**
+   * Whether the endpoint accepts `file` content parts (OpenAI, Azure OpenAI, LiteLLM); local servers get
+   * extracted text. Images are always sent as `image_url` parts — the model must support vision.
+   */
   nativePdf: boolean;
 }
 
@@ -25,30 +28,38 @@ export class OpenAiCompatibleClient implements ChatClient, EmbeddingClient, Docu
   }
 
   nativeMimeTypes(): ReadonlySet<string> {
-    return new Set(this.nativePdf ? ['application/pdf'] : []);
+    return new Set([...(this.nativePdf ? ['application/pdf'] : []), ...IMAGE_MIMES]);
   }
 
   async chat(req: ChatRequest): Promise<string> {
-    return this.complete(req.system, [{ type: 'text', text: req.user }], req.maxTokens);
+    return this.complete(req.system, [{ type: 'text', text: req.user }], req.maxTokens, req.json === true);
   }
 
   async parseDocument(req: ParseRequest): Promise<string> {
     const parts: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
-    if (this.nativeMimeTypes().has(req.document.mimeType)) {
+    const dataUrl = (mime: string, bytes: Buffer) => `data:${mime};base64,${bytes.toString('base64')}`;
+    if (IMAGE_MIMES.has(req.document.mimeType)) {
+      parts.push({ type: 'image_url', image_url: { url: dataUrl(req.document.mimeType, req.document.bytes) } });
+    } else if (this.nativeMimeTypes().has(req.document.mimeType)) {
       parts.push({ type: 'file', file: { filename: req.document.filename, file_data: `data:${req.document.mimeType};base64,${req.document.bytes.toString('base64')}` } });
     } else {
       if (req.extractedText === undefined) throw new LlmError(`${this.provider} cannot read ${req.document.mimeType} natively and no extracted text was supplied.`);
       parts.push({ type: 'text', text: `<document filename="${req.document.filename}">\n${req.extractedText}\n</document>` });
     }
+    for (const img of req.images ?? []) {
+      parts.push({ type: 'text', text: `Image: ${img.label}` });
+      parts.push({ type: 'image_url', image_url: { url: dataUrl(img.mimeType, img.bytes) } });
+    }
     parts.push({ type: 'text', text: req.instruction });
     return this.complete(req.system, parts, req.maxTokens);
   }
 
-  private async complete(system: string, parts: OpenAI.Chat.Completions.ChatCompletionContentPart[], maxTokens: number): Promise<string> {
+  private async complete(system: string, parts: OpenAI.Chat.Completions.ChatCompletionContentPart[], maxTokens: number, json = false): Promise<string> {
     const stream = await this.client.chat.completions.create({
       model: this.model,
       max_completion_tokens: maxTokens,
       stream: true,
+      ...(json ? { response_format: { type: 'json_object' as const } } : {}),
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: parts },

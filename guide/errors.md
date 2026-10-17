@@ -19,6 +19,9 @@ Common messages:
 | `... is not an initialised wiki` | wrong directory | `llm-wiki init <dir>` or correct the path |
 | `Pass either --root or --wiki, not both.` | conflicting flags | keep one |
 | `... above the --max-source-chars limit` | source too large | split the source, or raise the limit deliberately |
-| `... is not a text source` | unsupported format (pptx, xlsx, images) | convert it to markdown/PDF first |
+| `... is not a supported source` / `not a supported document type` | e.g. `.doc`, `.ppt`, `.xls`, `.heic`, `.key` | the message names the fix: save as .docx/.pptx/.xlsx, or convert to PNG/JPEG |
+| `... cannot read images` | the parser provider has no vision | use a parser model with vision |
+| `... is not a readable Office file` | password-protected, corrupt, or an old binary format renamed | save it again as .docx/.pptx/.xlsx |
+| `The model reply did not contain the expected JSON` | the chat model returned malformed JSON twice (the tool already retried once) | run the ingest again; for very large sources raise `--max-tokens` |
 | `No embeddings are stored yet.` | vector/hybrid search before embedding | `index --embed`, or use `--mode bm25` |
 | `--pick needs an interactive terminal` | agent used `--pick` | use `--wiki <name>` |

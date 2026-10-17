@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AnthropicFoundry } from '@anthropic-ai/foundry-sdk';
-import type { ChatClient, ChatRequest, DocumentParser, ParseRequest } from '../types.js';
+import { IMAGE_MIMES, type ChatClient, type ChatRequest, type DocumentParser, type ImageMime, type ParseRequest } from '../types.js';
 import { LlmError } from '../../errors.js';
 
 type MessagesApi = { messages: Pick<Anthropic['messages'], 'stream'> };
@@ -18,7 +18,7 @@ export class AnthropicClient implements ChatClient, DocumentParser {
   }
 
   nativeMimeTypes(): ReadonlySet<string> {
-    return new Set(['application/pdf']);
+    return new Set(['application/pdf', ...IMAGE_MIMES]);
   }
 
   async chat(req: ChatRequest): Promise<string> {
@@ -27,11 +27,18 @@ export class AnthropicClient implements ChatClient, DocumentParser {
 
   async parseDocument(req: ParseRequest): Promise<string> {
     const blocks: Anthropic.ContentBlockParam[] = [];
+    const image = (mime: ImageMime, bytes: Buffer): Anthropic.ContentBlockParam => ({ type: 'image', source: { type: 'base64', media_type: mime, data: bytes.toString('base64') } });
     if (req.document.mimeType === 'application/pdf') {
       blocks.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: req.document.bytes.toString('base64') }, title: req.document.filename });
+    } else if (IMAGE_MIMES.has(req.document.mimeType)) {
+      blocks.push(image(req.document.mimeType as ImageMime, req.document.bytes));
     } else {
       if (req.extractedText === undefined) throw new LlmError(`${this.provider} cannot read ${req.document.mimeType} natively and no extracted text was supplied.`);
       blocks.push({ type: 'document', source: { type: 'text', media_type: 'text/plain', data: req.extractedText }, title: req.document.filename });
+    }
+    for (const img of req.images ?? []) {
+      blocks.push({ type: 'text', text: `Image: ${img.label}` });
+      blocks.push(image(img.mimeType, img.bytes));
     }
     blocks.push({ type: 'text', text: req.instruction });
     return this.complete(req.system, blocks, req.maxTokens);

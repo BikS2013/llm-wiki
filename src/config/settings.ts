@@ -117,7 +117,7 @@ export interface ParserSettings {
  */
 export function parserSettings(config: Config): ParserSettings {
   const provider = parseProvider(
-    config.require('LLM_WIKI_PARSER_PROVIDER', 'Needed to convert PDF/DOCX originals into markdown.'),
+    config.require('LLM_WIKI_PARSER_PROVIDER', 'Needed to convert PDF, DOCX, PPTX and image originals into markdown (a model with vision for images).'),
     'LLM_WIKI_PARSER_PROVIDER',
   );
   const model = config.require('LLM_WIKI_PARSER_MODEL', 'The document-parsing model (for Azure OpenAI: the deployment name).');

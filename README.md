@@ -4,7 +4,7 @@ A TypeScript implementation of Andrej Karpathy's **LLM Wiki** pattern — the id
 
 ## User guide (slides)
 
-A 24-slide walkthrough of setup, the daily loop, PDF/DOCX handling and agent integration, in the BikS2013 theme:
+A 30-slide walkthrough of setup, the daily loop, documents (PDF, Word, PowerPoint, Excel, images), agent integration, and several wikis in markdown or HTML, in the BikS2013 theme:
 
 - **[View the deck](https://biks2013.github.io/llm-wiki/presentations/llm-wiki-user-guide.html)** (HTML, arrow keys to navigate; double-click text to edit, right-click for the menu)
 - [PDF](https://biks2013.github.io/llm-wiki/presentations/llm-wiki-user-guide.pdf) · [PowerPoint](https://github.com/BikS2013/llm-wiki/raw/main/docs/presentations/llm-wiki-user-guide.pptx)
@@ -134,7 +134,16 @@ One server serves every registered wiki. Each tool takes an optional `wiki` argu
 
 Tools exposed: `wiki_list_wikis`, `wiki_search`, `wiki_read_page`, `wiki_list_pages`, `wiki_write_page`, `wiki_append_log`, `wiki_recent_log`, `wiki_lint`, `wiki_reindex`.
 
-## PDF and DOCX originals
+## Documents, presentations, spreadsheets and images
+
+Besides text sources (`.md .txt .csv .json .html .rst .org`), `raw/` accepts originals that are converted to markdown first and then ingested; the original is never modified:
+
+| Original | Converted by |
+|---|---|
+| `.pdf`, `.docx` | the parser LLM (below) |
+| `.pptx` | slides read locally (titles, text in reading order, tables, chart data, alt text, speaker notes) and sent with the slide pictures to the parser LLM, which writes one section per slide and transcribes the pictures |
+| `.xlsx` | locally, **no LLM**: one markdown table per sheet with the exact stored values |
+| `.png` `.jpg` `.jpeg` `.gif` `.webp` | the parser LLM with vision: text transcribed, charts as tables, diagrams and photos described |
 
 `ingest` (or `parse`) sends a PDF/DOCX to the parser LLM configured by `LLM_WIKI_PARSER_PROVIDER` / `LLM_WIKI_PARSER_MODEL`, separate from the chat model, and writes the faithful markdown conversion next to the original as `raw/<name>.pdf.md` or `raw/<name>.docx.md`. Providers with native document input (Anthropic, Azure Anthropic/Foundry, Gemini, OpenAI, Azure OpenAI, LiteLLM) receive the PDF itself, which also handles scanned pages; Ollama and MLX receive text extracted locally with pdf.js. DOCX is always converted to HTML locally with mammoth first, then turned into markdown by the model.
 

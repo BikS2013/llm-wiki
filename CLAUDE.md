@@ -60,7 +60,7 @@ TypeScript implementation of Andrej Karpathy's **LLM Wiki** pattern (gist `karpa
 - `src/wiki/` — layout (`raw/`, `wiki/`, `.llm-wiki/`), `format.ts` (the markdown and HTML page formats), markdown/frontmatter/wikilink parsing, index generation, the log, structural lint, and `registry.ts` (named wikis in `~/.tool-agents/llm-wiki/wikis.json`).
 - `src/search/` — tokenizer, BM25, embeddings cache, incremental chunk index, hybrid (RRF) search.
 - `src/llm/` — provider factory for the eight standard providers (OpenAI, Anthropic, Gemini, Azure OpenAI, Azure Anthropic/Foundry, Ollama, LiteLLM, MLX).
-- `src/ops/` — `init`, `ingest`, `query`, semantic `lint`, page-change application, `parse` (PDF/DOCX → markdown via the dedicated parser LLM, `extract.ts` for local pdf.js/mammoth extraction).
+- `src/ops/` — `init`, `ingest`, `query`, semantic `lint`, page-change application, `parse` (PDF/DOCX/PPTX/images → markdown via the dedicated parser LLM, XLSX locally; `extract.ts` routes file types and runs pdf.js/mammoth, `office.ts` reads PPTX/XLSX packages with jszip), `convert`.
 - `src/mcp/` — MCP stdio server exposing `wiki_*` tools.
 - `templates/CLAUDE.md` — the schema written into every new wiki root.
 - `guide/*.md` + `src/guide.ts` — the `llm-wiki guide` manual for people and agents; the `commands` topic is generated from the commander tree, the other topics are the markdown files. Update them whenever a command, option, JSON shape or rule changes.
@@ -80,7 +80,7 @@ pnpm link:global  # build and install the `llm-wiki` OS command (pnpm unlink:glo
 ## Rules specific to this project
 
 - Never write defaults for configuration settings; use `Config.require()` which throws `ConfigError`.
-- Sources under `raw/` of a wiki are immutable; the tool only reads them. The one thing it writes into `raw/` is the markdown conversion of a PDF/DOCX original (`raw/<doc>.pdf.md`), never touching the original.
+- Sources under `raw/` of a wiki are immutable; the tool only reads them. The one thing it writes into `raw/` is the markdown conversion of a PDF/DOCX/PPTX/XLSX/image original (`raw/<doc>.<ext>.md`), never touching the original.
 - A command works on exactly one wiki, chosen by `--wiki`/`LLM_WIKI_NAME` or `--root`/`LLM_WIKI_ROOT`, then the registry's current selection, then an interactive prompt; never guessed (`resolveWiki` in `src/config/settings.ts`). Only `search` / `query` with `--wikis`/`--all-wikis` (and MCP `wiki_search`) span several wikis; nothing writes to several wikis except the cross-wiki query log entries.
 - The index (`wiki/index.md` / `wiki/index.html`) is generated from page metadata — never hand-edit it; change the metadata and run `llm-wiki index`.
 - A wiki's page format (`markdown` | `html`) is chosen at `init` (`--format` / `LLM_WIKI_FORMAT`, no default), recorded in `.llm-wiki/wiki.json`; the only change allowed is `convert --to html` (`src/ops/convert.ts`), which backs up the markdown files. Code above `src/wiki/format.ts` works on frontmatter + body and must not assume `.md`: use `paths.format`, `paths.pageRel(id)`, `paths.index` / `paths.log`, `readPageParts` / `writePageParts`.

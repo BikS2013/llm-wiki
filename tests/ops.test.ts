@@ -26,10 +26,23 @@ const plan = JSON.stringify({
   log_entry: 'Integrated the Ada article.',
 });
 
+test('chatJson asks for JSON mode and retries once with the parse error', async () => {
+  const { chatJson } = await import('../src/llm/json.js');
+  const llm = new FakeChat(['{"a": "<a href="x">broken</a>"}', '{"a": "<a href=\\"x\\">ok</a>"}']);
+  const events: string[] = [];
+  assert.deepEqual(await chatJson(llm, { system: 's', user: 'u', maxTokens: 10 }, isRecord, (m) => events.push(m)), { a: '<a href="x">ok</a>' });
+  assert.equal(llm.requests.length, 2);
+  assert.ok(llm.requests.every((r) => r.json === true));
+  assert.match(llm.requests[1]!.user, /^u\n\nYour previous reply could not be used: The model reply did not contain the expected JSON/);
+  assert.match(events[0]!, /asking fake\/fake-model once more/);
+  await assert.rejects(chatJson(new FakeChat(['nope', 'still nope']), { system: 's', user: 'u', maxTokens: 10 }, isRecord), /expected JSON/);
+});
+
 test('extractJson tolerates fences and prose', () => {
   assert.deepEqual(extractJson('Sure:\n```json\n{"a":1}\n```', isRecord), { a: 1 });
   assert.deepEqual(extractJson('prefix {"a":{"b":2}} suffix', isRecord), { a: { b: 2 } });
   assert.throws(() => extractJson('nothing here', isRecord), /expected JSON/);
+  assert.deepEqual(extractJson('{"a": "line one\nline\ttwo", "b": "q\\"x"}', isRecord), { a: 'line one\nline\ttwo', b: 'q"x' }, 'raw control characters inside strings are repaired');
 });
 
 test('ingest stages the source, writes pages, index, ledger and log; re-ingest is skipped', async () => {

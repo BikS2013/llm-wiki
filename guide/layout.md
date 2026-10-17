@@ -100,11 +100,31 @@ ignored and reported as `foreign-format-file`.
 
 File names are lowercase kebab-case slugs of the title.
 
-## PDF and DOCX originals
+## Document and image originals (PDF, DOCX, PPTX, XLSX, images)
 
-`ingest` or `parse` of `raw/report.pdf` writes `raw/report.pdf.md` (and `raw/x.docx` → `raw/x.docx.md`)
-with the dedicated parser model. The markdown's frontmatter records `original: raw/report.pdf`, the
-original's sha256, the parser provider/model and the date; the body starts with a link to the original.
+`ingest` or `parse` of `raw/report.pdf` writes `raw/report.pdf.md` (`raw/x.pptx` → `raw/x.pptx.md`,
+`raw/photo.jpg` → `raw/photo.jpg.md`, …), which is then ingested like any markdown source. The markdown's
+frontmatter records `original: raw/report.pdf`, `original_type`, the original's sha256, `parsed_by` (the
+parser provider/model, or `llm-wiki/xlsx-reader`) and the date; the body starts with a link to the original.
+
+| Original | How it is converted | Model needed |
+|---|---|---|
+| `.pdf` | sent to the parser model as a PDF (anthropic, gemini, openai, azure-openai, litellm); ollama/mlx get text extracted with pdf.js | parser |
+| `.docx` | converted to HTML locally (mammoth), then to markdown by the parser model | parser |
+| `.pptx` | slides read locally — titles, text in reading order, tables, chart data, picture alt text, speaker notes — and sent with the slides' pictures; the parser model writes one `## Slide N — title` section per slide and transcribes/describes each picture | parser (with vision for pictures) |
+| `.xlsx` | converted **locally, no LLM**: one markdown table per sheet, cell values exactly as stored (formulas as their last calculated value, or as the formula when the file holds none; dates as ISO dates; percentages with `%`) | none |
+| `.png` `.jpg` `.jpeg` `.gif` `.webp` | sent to the parser model as an image: all visible text transcribed, charts given as data tables, diagrams and photos described | parser with vision |
+
+Refused with a hint: `.doc` `.ppt` `.xls` (save as the `x` format), `.key` `.numbers` `.pages` (export),
+`.heic` `.tif` `.bmp` `.svg` (convert to PNG/JPEG). Images in `raw/assets/` are attachments of other sources
+and are never converted on their own.
+
+PPTX limits: pictures below 4 KB (icons) are skipped; a picture used on several slides is sent once; at most
+`--max-images` (default 40) pictures are sent, pictures over 5 MB and EMF/WMF/TIFF/SVG pictures are not —
+everything not sent is listed in the conversion's provenance note ("Not converted: …"). SmartArt and
+drawn shapes without text are not rendered. Image originals over 20 MB are refused.
+
+
 The original is never modified. Conversions are cached by hash: unchanged originals are not re-parsed
 unless `--force` (parse) or `--reparse` (ingest) is given.
 

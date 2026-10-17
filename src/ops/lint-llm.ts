@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import type { ChatClient } from '../llm/types.js';
-import { extractJson, isRecord } from '../llm/json.js';
+import { chatJson, isRecord } from '../llm/json.js';
 import { SearchStore } from '../search/store.js';
 import { writeIndex } from '../wiki/index.js';
 import type { WikiPaths } from '../wiki/layout.js';
@@ -40,8 +40,7 @@ export async function lintSemantic(paths: WikiPaths, llm: ChatClient, opts: { co
   log(`sending ${pages.length} page(s) to ${llm.provider}/${llm.model}${omitted.length ? ` (${omitted.length} omitted for budget)` : ''}`);
   const schema = fs.existsSync(paths.schema) ? fs.readFileSync(paths.schema, 'utf8') : '';
   const user = [`<index>\n${readIndexMd(paths)}\n</index>`, `<pages>\n${renderPagesForPrompt(pages)}\n</pages>`, omitted.length ? `Pages omitted for size: ${omitted.map((p) => p.id).join(', ')}.` : '', 'Audit the wiki and respond with the JSON object only.'].join('\n\n');
-  const reply = await llm.chat({ system: lintSystemPrompt(schema), user, maxTokens: opts.maxTokens });
-  const j = extractJson(reply, isSemanticJson);
+  const j = await chatJson(llm, { system: lintSystemPrompt(schema), user, maxTokens: opts.maxTokens }, isSemanticJson, log);
   const result: SemanticLint = {
     contradictions: arr(j.contradictions, (x) => (typeof x.description === 'string' ? { pages: strs(x.pages), description: x.description } : undefined)),
     stale_claims: arr(j.stale_claims, (x) => (typeof x.claim === 'string' ? { page: String(x.page ?? ''), claim: x.claim, superseded_by: String(x.superseded_by ?? '') } : undefined)),

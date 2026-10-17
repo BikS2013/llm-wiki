@@ -57,7 +57,7 @@ interface ParseLedgerFile {
   originals: Record<string, ParseRecord>;
 }
 
-/** `.llm-wiki/parsed.json` — which PDF/DOCX originals have been converted to markdown, by content hash. */
+/** `.llm-wiki/parsed.json` — which originals (PDF, DOCX, PPTX, XLSX, images) have been converted to markdown, by content hash. */
 export class ParseLedger {
   private readonly file: string;
   private data: ParseLedgerFile;

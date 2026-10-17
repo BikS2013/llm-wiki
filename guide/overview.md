@@ -15,8 +15,8 @@ What the tool does:
 |---|---|---|
 | Create and register a wiki | `init`, `wikis add` | no |
 | Choose / list / describe wikis | `wikis ...` | no |
-| Add a document to a wiki (compile it into pages) | `ingest` | yes (chat model; parser model for PDF/DOCX) |
-| Convert a PDF/DOCX to markdown only | `parse` | yes (parser model) |
+| Add a document to a wiki (compile it into pages) | `ingest` | yes (chat model; parser model for PDF, DOCX, PPTX and images) |
+| Convert a PDF, DOCX, PPTX, XLSX or image to markdown only | `parse` | parser model (none for XLSX) |
 | Answer a question from a wiki (or several: `--wikis`, `--all-wikis`), with citations | `query` | yes (chat model) |
 | Find pages by keyword or meaning | `search` | bm25: no; vector/hybrid: embedding model |
 | Rebuild the catalog and search index | `index` | only with `--embed` |
@@ -31,7 +31,7 @@ Key ideas an agent must keep in mind:
 1. **Pick the wiki explicitly.** Always pass `--wiki <name>`; list the candidates with
    `llm-wiki wikis list --json` and choose by name and description.
 2. **`raw/` is immutable.** Source documents are never edited or deleted. The tool only adds the markdown
-   conversion of a PDF/DOCX next to its original.
+   conversion of a PDF, DOCX, PPTX, XLSX or image next to its original.
 3. **`wiki/` is owned by the tool/LLM.** The index (`wiki/index.md` or `wiki/index.html`) is generated; never hand-edit it.
 4. **LLM commands cost money and time.** `ingest`, `query`, `parse`, `lint --llm`, `index --embed` call a
    model. Prefer `search` (free, local) to locate information, and `ingest --dry-run` to preview.

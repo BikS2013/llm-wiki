@@ -10,8 +10,9 @@
         entity/concept pages), LLM-driven query (answer with citations,
         optionally filed back as a synthesis page), structural and semantic
         lint, and an MCP server so Claude Code / Codex can operate on the
-        wiki directly, plus conversion of PDF/DOCX originals into markdown
-        by a dedicated parser LLM (the original is kept unmodified in
+        wiki directly, plus conversion of PDF, DOCX, PPTX and image originals
+        into markdown by a dedicated parser LLM (XLSX is converted locally,
+        without an LLM; the original is kept unmodified in
         `raw/` and referenced from the markdown's frontmatter `original:`
         field and from the wiki's source page). Intended for indexing and
         searching personal documentation.
@@ -131,8 +132,8 @@
         | `wikis show [name] [--json]` | Details of one wiki |
         | `wikis rename <old> <new>` / `wikis describe <name> [text]` | Rename / (re)describe a registered wiki |
         | `wikis remove <name>` | Unregister a wiki; its files are never touched |
-        | `ingest [files...] [--json] [--force] [--dry-run] [--max-tokens n] [--related n] [--context-chars n] [--max-source-chars n] [--reparse] [--parse-max-tokens n] [--max-bytes n]` | LLM-driven compile of one or more raw sources into `sources/`, `entities/`, `concepts/` pages. PDF/DOCX sources are converted first with the parser LLM to `raw/<name>.pdf.md` / `raw/<name>.docx.md`, then ingested; `--reparse`, `--parse-max-tokens` and `--max-bytes` tune that conversion step |
-        | `parse <files...> [--json] [--force] [--max-tokens n] [--max-bytes n]` | Convert PDF/DOCX originals into markdown with the dedicated parser LLM only, without ingesting them into the wiki |
+        | `ingest [files...] [--json] [--force] [--dry-run] [--max-tokens n] [--related n] [--context-chars n] [--max-source-chars n] [--reparse] [--parse-max-tokens n] [--max-bytes n] [--max-images n]` | LLM-driven compile of one or more raw sources into `sources/`, `entities/`, `concepts/` pages. PDF/DOCX sources are converted first with the parser LLM to `raw/<name>.pdf.md` / `raw/<name>.docx.md`, then ingested; `--reparse`, `--parse-max-tokens` and `--max-bytes` tune that conversion step |
+        | `parse <files...> [--json] [--force] [--max-tokens n] [--max-bytes n] [--max-images n]` | Convert PDF, DOCX, PPTX, XLSX and image (PNG, JPEG, GIF, WebP) originals into markdown without ingesting them: PDF/DOCX/PPTX/images with the dedicated parser LLM (PPTX: slides read locally plus up to `--max-images` slide pictures; images need a vision model), XLSX locally with no LLM (one markdown table per sheet, exact values). Without ingesting them into the wiki |
         | `query "<question>" [--json] [--file] [--limit n] [--pages n] [--mode bm25\|vector\|hybrid] [--max-tokens n] [--wikis a,b \| --all-wikis]` | LLM-driven answer with citations; `--file` also saves it as a `syntheses/` page. With `--wikis`/`--all-wikis` the answer draws on several wikis (rank-fused search, shared page budget, citations `[[wiki:page-id]]`, a log entry in each wiki; `--file` refused) |
         | `search "<query>" [--mode bm25\|vector\|hybrid] [--limit n] [--layer wiki\|raw\|all] [--wikis a,b \| --all-wikis] [--json]` | Local full-text / semantic search over pages (and optionally raw sources) of the selected wiki, or of several registered wikis at once (rankings merged with reciprocal-rank fusion, each hit labelled with its wiki) |
         | `index [--raw] [--embed] [--json]` | Regenerate the index (`index.md` / `index.html`) and the search index; in HTML wikis first convert leftover `[[wikilinks]]`; `--embed` also (re)computes embeddings |
@@ -183,7 +184,7 @@
         | `LLM_WIKI_MODEL` | Chat model name (e.g. `claude-opus-5`, `gpt-5`, `gemini-2.5-pro`, `llama3`). For `azure-openai` the deployment comes from `AZURE_OPENAI_DEPLOYMENT` instead. Overridable with `--model`. |
         | `LLM_WIKI_EMBEDDING_PROVIDER` | Provider for embeddings used by `index --embed` and vector/hybrid search. One of `openai`, `gemini`, `azure-openai`, `ollama`, `litellm`, `mlx` (Anthropic providers cannot embed). Optional — BM25 search works without it. |
         | `LLM_WIKI_EMBEDDING_MODEL` | Embedding model (or Azure deployment) name, e.g. `text-embedding-3-small`, `gemini-embedding-001`, `nomic-embed-text`. Required only when `LLM_WIKI_EMBEDDING_PROVIDER` is set. |
-        | `LLM_WIKI_PARSER_PROVIDER` | Dedicated provider for converting PDF/DOCX originals into markdown (`parse`, and `ingest` of a `.pdf`/`.docx` source). One of the eight standard providers. Required only when a PDF/DOCX is parsed. |
+        | `LLM_WIKI_PARSER_PROVIDER` | Dedicated provider for converting PDF, DOCX, PPTX and image originals into markdown (`parse`, and `ingest` of such a source; not needed for `.xlsx`). Images and PPTX pictures need a model with vision. One of the eight standard providers. Required only when a PDF/DOCX is parsed. |
         | `LLM_WIKI_PARSER_MODEL` | Model name for the parser provider (for `azure-openai`, the deployment name). Required together with `LLM_WIKI_PARSER_PROVIDER`. |
 
         `llm-wiki` supports all eight standard LLM providers via
@@ -281,7 +282,8 @@
         cp ~/Downloads/paper.pdf.md $LLM_WIKI_ROOT/raw/
         llm-wiki ingest raw/paper.pdf.md --provider anthropic --model claude-opus-5
 
-        # 2b. A PDF/DOCX original is converted by the parser LLM first,
+        # 2b. A PDF/DOCX/PPTX/image original is converted by the parser LLM first
+        #     (an XLSX locally, without an LLM),
         #     then compiled into the wiki like any other source
         cp ~/Downloads/report.pdf $LLM_WIKI_ROOT/raw/
         export LLM_WIKI_PARSER_PROVIDER=gemini LLM_WIKI_PARSER_MODEL=gemini-2.5-pro

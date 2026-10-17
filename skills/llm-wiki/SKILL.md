@@ -19,7 +19,8 @@ llm-wiki --version          # must exist; if missing, tell the user (installed w
 llm-wiki config             # which settings resolved, from which tier; secrets are masked
 ```
 - `ingest`, `query`, `lint --llm` need `LLM_WIKI_PROVIDER` + `LLM_WIKI_MODEL`.
-- `ingest`/`parse` of PDF/DOCX also need `LLM_WIKI_PARSER_PROVIDER` + `LLM_WIKI_PARSER_MODEL`.
+- `ingest`/`parse` of PDF/DOCX/PPTX/images also need `LLM_WIKI_PARSER_PROVIDER` + `LLM_WIKI_PARSER_MODEL`
+  (a model with vision for images and slide pictures). XLSX is converted locally and needs no parser.
 - `search --mode vector|hybrid` and `index --embed` need `LLM_WIKI_EMBEDDING_PROVIDER` + `LLM_WIKI_EMBEDDING_MODEL`.
 - `search` (bm25), `wikis`, `index` (without `--embed`), `lint` (without `--llm`), `log`, `convert` need no model.
 
@@ -45,7 +46,7 @@ value into any `.env` file and never print API keys.**
 | add/ingest file(s) into wiki X | `llm-wiki --wiki X ingest <file>... --json` | yes |
 | preview what an ingest would change | `llm-wiki --wiki X ingest <file> --dry-run --json` | yes |
 | ingest everything pending in `raw/` | `llm-wiki --wiki X ingest --json` | yes |
-| convert a PDF/DOCX to markdown only, to review first | `llm-wiki --wiki X parse <file> --json`, read `raw/<file>.<ext>.md`, then `ingest raw/<file>.<ext>.md --json` | yes |
+| convert a PDF/DOCX/PPTX/XLSX/image to markdown only, to review first | `llm-wiki --wiki X parse <file> --json`, read `raw/<file>.<ext>.md`, then `ingest raw/<file>.<ext>.md --json` | yes |
 | what does wiki X say about … | `llm-wiki --wiki X query "<q>" --json` | yes |
 | question spanning several wikis | `llm-wiki query "<q>" --wikis X,Y --json` (or `--all-wikis`) | yes |
 | answer and keep it in wiki X | `llm-wiki --wiki X query "<q>" --file --json` (filing re-asks the question: if the user may want to keep the answer, ask before the first query) | yes |
@@ -65,6 +66,8 @@ value into any `.env` file and never print API keys.**
 Notes:
 - **Search before you query.** `search` is local and free. Use it for "find / where is"; use `query`
   when the user wants a synthesised answer.
+- Sources: text (`.md .txt .csv .json .html .rst .org`) and originals converted first — `.pdf .docx .pptx
+  .xlsx` and images `.png .jpg .jpeg .gif .webp`. Legacy `.doc/.ppt/.xls` and `.heic/.tif` are refused.
 - Files outside `raw/` given to `ingest`/`parse` are copied into `raw/` first. PDF/DOCX are converted to
   `raw/<file>.<ext>.md` (`x.pdf.md`, `x.docx.md`) by the parser model; the original is never modified.
 - `lint` exits 1 when it finds errors, but stdout still holds the full JSON report — parse it and report
@@ -113,7 +116,8 @@ Common messages:
 | `Pass either --root or --wiki, not both.` | keep one |
 | `--pick needs an interactive terminal` | use `--wiki <name>` |
 | `No embeddings are stored yet.` | `index --embed`, or `--mode bm25` |
-| `... is not a text source` | pptx/xlsx/images are refused; ask the user for a PDF/DOCX/markdown version |
+| `... is not a supported source` | the message names the fix (e.g. save .ppt as .pptx, convert .heic to JPEG); tell the user |
+| `... cannot read images` | the parser model has no vision; tell the user to configure one |
 | `... above the --max-source-chars limit` | suggest splitting the source; raise the limit only if the user agrees |
 
 More: `llm-wiki guide errors`.

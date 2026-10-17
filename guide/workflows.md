@@ -35,13 +35,17 @@ Unchanged sources are skipped (tracked by hash); `--force` re-ingests. Sources l
 `--max-source-chars` are refused, never truncated. After ingest, the index, the search index and
 the log are already updated.
 
-## 3. Convert a PDF/DOCX without ingesting (to review it first)
+## 3. Convert a document or image without ingesting (to review it first)
 
 ```bash
 llm-wiki --wiki research parse ~/Downloads/contract.docx --json
-# read raw/contract.docx.md, then:
+llm-wiki --wiki research parse ~/Downloads/q3-review.pptx ~/Downloads/whiteboard.jpg --json
+llm-wiki --wiki research parse ~/Downloads/budget.xlsx --json      # local, no model needed
+# read raw/<file>.<ext>.md, then:
 llm-wiki --wiki research ingest raw/contract.docx.md
 ```
+Accepted: `.pdf .docx .pptx .xlsx .png .jpg .jpeg .gif .webp` (see the `layout` topic for how each is
+converted). `ingest` of the original does the conversion and the ingest in one step.
 
 ## 4. Answer a question from a wiki
 

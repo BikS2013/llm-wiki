@@ -20,7 +20,7 @@ description: Use the llm-wiki CLI to manage the user's personal LLM-maintained w
 ## Sections the skill should contain
 
 1. **Preconditions** — `llm-wiki --version` works; `llm-wiki config` shows the settings for the
-   operation (chat provider/model for ingest/query; parser provider/model for PDF/DOCX; embedding
+   operation (chat provider/model for ingest/query; parser provider/model for PDF/DOCX/PPTX/images; embedding
    settings for vector/hybrid search).
 2. **Choosing the wiki** — the procedure from the `selection` topic: `wikis list --json`, match on
    name/description, ask when ambiguous, then always pass `--wiki <name>`.

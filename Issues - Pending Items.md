@@ -19,6 +19,7 @@ All runtime and dev dependencies were checked against the GitHub Advisory Databa
 | mammoth | ^1.12.3 | 0 | 2026-09-12 |
 | pdfjs-dist | ^6.3.289 | 0 | 2026-09-12 (chosen over `unpdf`, which pins pdfjs-dist 5.x and pulls a native canvas binary) |
 | marked | ^18.1.1 | 0 (latest, no dependencies, MIT) | 2026-10-17 — renders markdown bodies to HTML in HTML-format wikis |
+| jszip | ^3.10.2 | 0 (latest; already present transitively via mammoth, now direct — same single copy) | 2026-10-17 — reads PPTX/XLSX packages |
 
 Overrides are listed below with their removal condition. `pnpm.onlyBuiltDependencies` allows only `esbuild` (needed by `tsx`) to run its postinstall script.
 
@@ -28,7 +29,10 @@ Overrides are listed below with their removal condition. `pnpm.onlyBuiltDependen
 
 ## Pending items
 
-- PDF / DOCX parsing relies on the parser LLM's faithfulness; review `raw/<doc>.pdf.md` for long or table-heavy documents. Other binary formats (PPTX, XLSX, images) are still refused.
+- PDF / DOCX / PPTX / image parsing relies on the parser LLM's faithfulness; review `raw/<doc>.<ext>.md` for long, table-heavy or picture-heavy originals. Legacy binary formats (`.doc`, `.ppt`, `.xls`), Apple formats and HEIC/TIFF/BMP/SVG are refused with a conversion hint.
+- PPTX: slides are read from their XML, not rendered. SmartArt, drawn shapes and vector (EMF/WMF/SVG) pictures are not seen by the model (SmartArt is named, vector pictures are listed as not sent); pictures over 5 MB or beyond `--max-images` are listed as not sent. Rendering slides to images would need LibreOffice or similar.
+- XLSX: charts, comments, cell formatting and merged-cell layout are not converted; dates are detected from number formats, so a date stored with a General format appears as its serial number. Very large sheets produce large markdown that `ingest --max-source-chars` refuses (never truncated); split the workbook or raise the limit deliberately.
+- Image sources are sent as they are (no resizing): Anthropic accepts at most 5 MB per image, OpenAI/Gemini 20 MB; the tool refuses images over 20 MB.
 - Semantic lint sends every page to the model within `--context-chars`; very large wikis may need a sampling strategy.
 - Embedding calls are sequential batches of 32; add concurrency if a large corpus makes `index --embed` slow.
 - Wikis created before the registry existed (v0.1) are not registered automatically; register them once with `llm-wiki wikis add <name> <dir>`.
@@ -41,3 +45,6 @@ Overrides are listed below with their removal condition. `pnpm.onlyBuiltDependen
 ## Completed items
 
 - 2026-10-17 — Cross-wiki question answering: `llm-wiki query "<q>" --wikis a,b` / `--all-wikis` (`queryWikis` in `src/ops/query.ts`). Problem: `query` could only answer from one wiki, so a question spanning subjects kept in different wikis needed several queries and manual merging. Solution: each wiki is searched on its own index and the rankings are fused with RRF (as `search --wikis` already did); the top pages from all wikis share one page/character budget and are given to the model tagged with their wiki; the model cites `[[<wiki>:<page-id>]]`; every wiki consulted gets a `query` log entry; `--file` is refused because a cross-wiki answer has no single home. Verified live with gemini-3.6-flash across an HTML and a markdown wiki.
+- 2026-10-17 — PPTX, XLSX and image sources (`src/ops/office.ts`, `src/ops/extract.ts`, `src/ops/parse.ts`). Problem: only PDF/DOCX could be converted; presentations, spreadsheets and images were refused. Solution: PPTX slides are read locally (titles, text in reading order, tables, chart data from the chart parts, picture alt text, speaker notes) and sent with the slide pictures (deduplicated, icons skipped, capped by `--max-images`) to the parser LLM; XLSX is converted locally without an LLM (one markdown table per sheet, exact values, formulas without cached values shown as formulas — an empty `<v></v>` written by libraries is not read as 0); PNG/JPEG/GIF/WebP are sent to the parser LLM as images for transcription and description. All providers send images (anthropic image blocks, Gemini inline data, OpenAI-compatible image_url). Verified live with gemini-3.6-flash on a python-pptx deck (table, chart, picture, notes), an openpyxl workbook and a PNG screenshot, ingested into an HTML wiki.
+- 2026-10-17 — Malformed JSON from the chat model aborted ingests in HTML wikis (HTML attributes with unescaped quotes; raw newlines inside strings). Solution: JSON mode where the provider has one (Gemini `responseMimeType`, OpenAI-compatible `response_format`), repair of raw control characters inside strings, one retry that quotes the parse error (`chatJson` in `src/llm/json.ts`), and the HTML prompt asks for single-quoted attributes.
+

@@ -29,7 +29,7 @@ const wikiParam = z
  * registered while the server runs are visible immediately.
  */
 export async function serveMcp(config: Config, registryPath: string, fallbackWiki: ResolvedWiki | undefined): Promise<void> {
-  const server = new McpServer({ name: 'llm-wiki', version: '0.3.0' });
+  const server = new McpServer({ name: 'llm-wiki', version: '0.4.0' });
   const registry = () => new WikiRegistry(registryPath);
 
   /** Resolves the wiki for one call. An unknown name or no choice at all raises an error the client sees. */

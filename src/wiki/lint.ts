@@ -94,7 +94,7 @@ export function lintStructure(paths: WikiPaths): LintReport {
     if (rel.startsWith('raw/assets/')) continue;
     if (isParsableDocument(abs)) {
       if (!parsed.isCurrent(rel, fs.readFileSync(abs)) || !fs.existsSync(path.join(paths.root, markdownPathFor(rel)))) {
-        findings.push({ severity: 'info', code: 'original-not-parsed', message: `${rel} is a PDF/DOCX original without an up-to-date markdown conversion. Run \`llm-wiki ingest ${rel}\` (or \`llm-wiki parse ${rel}\`).` });
+        findings.push({ severity: 'info', code: 'original-not-parsed', message: `${rel} is an original (PDF, DOCX, PPTX, XLSX or image) without an up-to-date markdown conversion. Run \`llm-wiki ingest ${rel}\` (or \`llm-wiki parse ${rel}\`).` });
       }
       continue;
     }

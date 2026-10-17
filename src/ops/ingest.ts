@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Config } from '../config/env.js';
 import { LlmError, LlmWikiError } from '../errors.js';
-import { extractJson, isRecord, isStringArray } from '../llm/json.js';
+import { chatJson, isRecord, isStringArray } from '../llm/json.js';
 import type { ChatClient } from '../llm/types.js';
 import { SearchStore, isTextSource } from '../search/store.js';
 import { writeIndex } from '../wiki/index.js';
@@ -14,7 +14,7 @@ import { IngestLedger, ParseLedger } from './ledger.js';
 import { applyPageChanges, type AppliedChange, type PageChange } from './pages.js';
 import { ingestSystemPrompt } from './prompts.js';
 import { stageSource } from './stage.js';
-import { isParsableDocument } from './extract.js';
+import { isParsableDocument, needsParserLlm, unsupportedHint } from './extract.js';
 import { markdownPathFor, parseDocument, type ParseOptions } from './parse.js';
 import type { DocumentParser } from '../llm/types.js';
 import { parseFrontmatter } from '../wiki/markdown.js';
@@ -22,9 +22,9 @@ import { readPageParts, writePageParts } from './pages.js';
 
 export interface IngestOptions {
   force: boolean;
-  /** Supplies the parser LLM lazily; only called when the source is a PDF/DOCX original. */
+  /** Supplies the parser LLM lazily; only called when the source is a PDF/DOCX/PPTX original or an image. */
   parser?: (() => DocumentParser) | undefined;
-  parse?: Pick<ParseOptions, 'force' | 'maxTokens' | 'maxBytes' | 'extractors'> | undefined;
+  parse?: Pick<ParseOptions, 'force' | 'maxTokens' | 'maxBytes' | 'maxImages' | 'extractors'> | undefined;
   dryRun: boolean;
   maxTokens: number;
   relatedLimit: number;
@@ -43,7 +43,7 @@ export interface IngestPlan {
 
 export interface IngestResult {
   sourceRel: string;
-  /** Set when the source was converted from a PDF/DOCX original. */
+  /** Set when the source was converted from an original (PDF, DOCX, PPTX, XLSX or image). */
   originalRel?: string | undefined;
   skipped: boolean;
   plan?: IngestPlan;
@@ -73,13 +73,21 @@ export async function ingestSource(config: Config, paths: WikiPaths, llm: ChatCl
   let sourceRel = stageSource(paths, file);
   let originalRel: string | undefined;
   if (isParsableDocument(sourceRel)) {
-    if (!opts.parser) throw new LlmWikiError(`${sourceRel} is a PDF/DOCX original and needs the parser LLM (LLM_WIKI_PARSER_PROVIDER / LLM_WIKI_PARSER_MODEL).`);
-    const parsed = await parseDocument(paths, opts.parser(), sourceRel, { force: opts.parse?.force ?? false, maxTokens: opts.parse?.maxTokens ?? 64000, maxBytes: opts.parse?.maxBytes ?? 30_000_000, extractors: opts.parse?.extractors, onEvent: log });
+    const factory = opts.parser;
+    if (needsParserLlm(sourceRel) && !factory) throw new LlmWikiError(`${sourceRel} is a ${path.extname(sourceRel).slice(1).toUpperCase()} original and needs the parser LLM (LLM_WIKI_PARSER_PROVIDER / LLM_WIKI_PARSER_MODEL).`);
+    const parser = () => {
+      if (!factory) throw new LlmWikiError(`${sourceRel} needs the parser LLM.`);
+      return factory();
+    };
+    const parsed = await parseDocument(paths, parser, sourceRel, { force: opts.parse?.force ?? false, maxTokens: opts.parse?.maxTokens ?? 64000, maxBytes: opts.parse?.maxBytes ?? 30_000_000, maxImages: opts.parse?.maxImages, extractors: opts.parse?.extractors, onEvent: log });
     originalRel = parsed.originalRel;
     sourceRel = parsed.markdownRel;
   }
   const abs = path.join(paths.root, sourceRel);
-  if (!isTextSource(abs)) throw new LlmWikiError(`${sourceRel} is not a text source (supported: .md .txt .csv .json .html .rst .org, plus .pdf/.docx via the parser LLM).`);
+  if (!isTextSource(abs)) {
+    const hint = unsupportedHint(abs);
+    throw new LlmWikiError(`${sourceRel} is not a supported source${hint ? ` — ${hint}` : ''} (text: .md .txt .csv .json .html .rst .org; converted first: .pdf .docx .pptx .xlsx and .png .jpg .jpeg .gif .webp images).`);
+  }
   if (originalRel === undefined) {
     const fm = parseFrontmatter(fs.readFileSync(abs, 'utf8')).frontmatter;
     if (typeof fm.original === 'string') originalRel = fm.original;
@@ -111,8 +119,7 @@ export async function ingestSource(config: Config, paths: WikiPaths, llm: ChatCl
   ].join('\n\n');
 
   log(`asking ${llm.provider}/${llm.model} to compile ${sourceRel} (${related.pages.length} related page(s) in context)`);
-  const reply = await llm.chat({ system: ingestSystemPrompt(schema, paths.format.name), user, maxTokens: opts.maxTokens });
-  const json = extractJson(reply, isPlanJson);
+  const json = await chatJson(llm, { system: ingestSystemPrompt(schema, paths.format.name), user, maxTokens: opts.maxTokens }, isPlanJson, log);
   const plan: IngestPlan = {
     title: json.title,
     takeaways: json.takeaways,
@@ -147,7 +154,7 @@ function stampOriginal(paths: WikiPaths, pageId: string, originalRel: string): v
   writePageParts(paths, pageId, { ...frontmatter, original: originalRel }, `${body.trimEnd()}${mention}\n`);
 }
 
-/** Raw sources that are new or changed since their last ingest, plus PDF/DOCX originals not yet converted. */
+/** Raw sources that are new or changed since their last ingest, plus originals (PDF, DOCX, PPTX, XLSX, images) not yet converted. */
 export function pendingSources(paths: WikiPaths): string[] {
   const ledger = new IngestLedger(paths);
   const parsed = new ParseLedger(paths);

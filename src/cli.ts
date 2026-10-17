@@ -27,7 +27,7 @@ import { fileLintReport, lintSemantic, renderSemanticLint } from './ops/lint-llm
 import { serveMcp } from './mcp/server.js';
 import { GUIDE_TOPICS, guideJson, parseTopic, renderGuide, renderTopic } from './guide.js';
 
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 
 const program = new Command();
 const info = (msg: string) => process.stderr.write(`${msg}\n`);
@@ -330,11 +330,12 @@ program
   .option('--related <n>', 'related pages to include as context', intArg, 8)
   .option('--context-chars <n>', 'character budget for related pages', intArg, 60000)
   .option('--max-source-chars <n>', 'refuse sources above this size instead of truncating', intArg, 300000)
-  .option('--reparse', 're-convert PDF/DOCX originals even if their markdown is up to date', false)
+  .option('--reparse', 're-convert PDF/DOCX/PPTX/XLSX/image originals even if their markdown is up to date', false)
   .option('--parse-max-tokens <n>', 'reply token limit for the parser LLM', intArg, 64000)
-  .option('--max-bytes <n>', 'refuse PDF/DOCX originals above this many bytes', intArg, 30000000)
+  .option('--max-bytes <n>', 'refuse originals (PDF, DOCX, PPTX, XLSX, images) above this many bytes', intArg, 30000000)
+  .option('--max-images <n>', 'PPTX: send at most this many slide pictures to the parser LLM', intArg, 40)
   .option('--json', 'machine-readable output on stdout (progress stays on stderr)', false)
-  .action(async (files: string[], opts: { force: boolean; dryRun: boolean; maxTokens: number; related: number; contextChars: number; maxSourceChars: number; reparse: boolean; parseMaxTokens: number; maxBytes: number; json: boolean }) => {
+  .action(async (files: string[], opts: { force: boolean; dryRun: boolean; maxTokens: number; related: number; contextChars: number; maxSourceChars: number; reparse: boolean; parseMaxTokens: number; maxBytes: number; maxImages: number; json: boolean }) => {
     const config = loadConfig();
     const paths = await openWiki(config, 'ingest');
     const targets = files.length > 0 ? files : pendingSources(paths).map((rel) => `${paths.root}/${rel}`);
@@ -356,7 +357,7 @@ program
         contextChars: opts.contextChars,
         maxSourceChars: opts.maxSourceChars,
         parser: getParser,
-        parse: { force: opts.reparse, maxTokens: opts.parseMaxTokens, maxBytes: opts.maxBytes },
+        parse: { force: opts.reparse, maxTokens: opts.parseMaxTokens, maxBytes: opts.maxBytes, maxImages: opts.maxImages },
         onEvent: info,
       });
       if (opts.json) {
@@ -387,19 +388,21 @@ program
 
 program
   .command('parse')
-  .description('convert PDF/DOCX originals into markdown with the dedicated parser LLM, without ingesting')
-  .argument('<files...>', 'PDF or DOCX files (outside raw/ they are copied in)')
+  .description('convert originals into markdown without ingesting: PDF, DOCX, PPTX and images with the dedicated parser LLM, XLSX locally')
+  .argument('<files...>', 'PDF, DOCX, PPTX, XLSX, PNG, JPEG, GIF or WebP files (outside raw/ they are copied in)')
   .option('--force', 're-convert even if the markdown is up to date', false)
   .option('--max-tokens <n>', 'reply token limit for the parser LLM', intArg, 64000)
   .option('--max-bytes <n>', 'refuse originals above this many bytes', intArg, 30000000)
+  .option('--max-images <n>', 'PPTX: send at most this many slide pictures to the parser LLM', intArg, 40)
   .option('--json', 'machine-readable output', false)
-  .action(async (files: string[], opts: { force: boolean; maxTokens: number; maxBytes: number; json: boolean }) => {
+  .action(async (files: string[], opts: { force: boolean; maxTokens: number; maxBytes: number; maxImages: number; json: boolean }) => {
     const config = loadConfig();
     const paths = await openWiki(config, 'parse');
-    const parser = createParserClient(config);
+    let client: ReturnType<typeof createParserClient> | undefined;
+    const parser = () => (client ??= createParserClient(config));
     const results: Array<{ original: string; markdown: string; skipped: boolean }> = [];
     for (const file of files) {
-      const r = await parseDocument(paths, parser, file, { force: opts.force, maxTokens: opts.maxTokens, maxBytes: opts.maxBytes, onEvent: info });
+      const r = await parseDocument(paths, parser, file, { force: opts.force, maxTokens: opts.maxTokens, maxBytes: opts.maxBytes, maxImages: opts.maxImages, onEvent: info });
       results.push({ original: r.originalRel, markdown: r.markdownRel, skipped: r.skipped });
       if (!opts.json) process.stdout.write(`${r.skipped ? 'up to date' : 'converted'}: ${r.originalRel} -> ${r.markdownRel}\n`);
     }
